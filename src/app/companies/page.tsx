@@ -1,0 +1,278 @@
+﻿"use client";
+
+import { useDeferredValue, useMemo, useState } from "react";
+import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
+import { Building2, Globe2, ScanSearch, Search } from "lucide-react";
+import { getCompanies } from "@/lib/api/companies";
+import { DataTable } from "@/components/shared/data-table";
+import { EmptyState } from "@/components/shared/empty-state";
+import { LoadingState } from "@/components/shared/loading-state";
+import { MetricCard } from "@/components/shared/metric-card";
+import { PaginationControls } from "@/components/shared/pagination-controls";
+import { PageHeader } from "@/components/shared/page-header";
+
+export default function CompaniesPage() {
+  const [search, setSearch] = useState("");
+  const [fitFilter, setFitFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("freshest");
+  const [page, setPage] = useState(1);
+  const deferredSearch = useDeferredValue(search);
+  const pageSize = 8;
+  const companiesQuery = useQuery({
+    queryKey: ["companies"],
+    queryFn: () => getCompanies(),
+  });
+
+  const companies = useMemo(() => companiesQuery.data ?? [], [companiesQuery.data]);
+  const locationOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          companies
+            .map((company) => company.location)
+            .filter((location): location is string => Boolean(location)),
+        ),
+      ).sort(),
+    [companies],
+  );
+  const [locationFilter, setLocationFilter] = useState("all");
+
+  const filteredCompanies = useMemo(() => {
+    const term = deferredSearch.trim().toLowerCase();
+    return companies
+      .filter((company) => {
+        const matchesSearch =
+          !term ||
+          [
+            company.name,
+            company.website,
+            company.domain,
+            company.location,
+            company.objectiveSignal,
+            company.titleMatch,
+          ]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(term));
+        const matchesFit =
+          fitFilter === "all" || company.revEngineerFit.toLowerCase() === fitFilter.toLowerCase();
+        const matchesLocation =
+          locationFilter === "all" || (company.location ?? "Unknown") === locationFilter;
+        return matchesSearch && matchesFit && matchesLocation;
+      })
+      .sort((left, right) => {
+        if (sortBy === "company") {
+          return left.name.localeCompare(right.name);
+        }
+        if (sortBy === "fit") {
+          const rank: Record<string, number> = { high: 3, medium: 2, low: 1 };
+          return (rank[right.revEngineerFit.toLowerCase()] ?? 0) - (rank[left.revEngineerFit.toLowerCase()] ?? 0);
+        }
+        return right.daysActive - left.daysActive;
+      });
+  }, [companies, deferredSearch, fitFilter, locationFilter, sortBy]);
+
+  const totalPages = Math.ceil(filteredCompanies.length / pageSize);
+  const currentPage = Math.min(page, Math.max(totalPages, 1));
+  const paginatedCompanies = filteredCompanies.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+
+  const totalCompanies = companies.length;
+  const rows = paginatedCompanies.map((company) => ({
+    id: company.id,
+    name: company.name,
+    fit: company.revEngineerFit,
+    website: company.website ?? company.domain ?? "No website",
+    description:
+      company.description?.slice(0, 140) ?? "No description captured yet.",
+    objectiveSignal:
+      company.objectiveSignal?.slice(0, 120) ?? "No objective signal yet.",
+    titleMatch: company.titleMatch ?? "No title match yet.",
+    location: company.location ?? "Unknown",
+    daysActive: `${company.daysActive} days`,
+  }));
+
+  if (companiesQuery.isError) {
+    return (
+      <EmptyState
+        title="Companies could not be loaded"
+        description="The Company page now depends on the backend company aggregation endpoint. Start the backend and run at least one campaign import."
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Companies"
+        description="Companies are your lead list. This page turns hiring evidence into usable prospect rows with website, role signal, expansion intent, and freshness."
+      />
+
+      {companiesQuery.isLoading && companies.length === 0 ? (
+        <LoadingState label="Loading companies from the backend..." />
+      ) : null}
+
+      <section className="grid gap-4 md:grid-cols-3">
+        <MetricCard
+          label="Target companies"
+          value={String(totalCompanies)}
+          change="Deduped from ingested scraper output"
+          icon={Building2}
+        />
+        <MetricCard
+          label="High RevEngineer fit"
+          value={String(
+            companies.filter((company) => company.revEngineerFit.toLowerCase() === "high").length,
+          )}
+          change="Best outreach candidates"
+          icon={ScanSearch}
+        />
+        <MetricCard
+          label="Web evidence checked"
+          value={`${companies.filter((company) => company.webEvidence).length}/${companies.length}`}
+          change="Backend-ingested evidence snippets"
+          icon={Globe2}
+        />
+      </section>
+
+      <section className="rounded-[1.8rem] border border-blue-100 bg-white p-5 shadow-[0_12px_28px_rgba(15,15,15,0.05)]">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-black/60">
+              Lead Search
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-black">
+              Search by company, signal, website, or market
+            </h2>
+          </div>
+          <div className="grid w-full gap-3 md:max-w-4xl md:grid-cols-4">
+            <label className="flex items-center gap-3 rounded-full border border-blue-100 bg-blue-50 px-4 py-3 md:col-span-2">
+              <Search className="h-4 w-4 text-black/45" />
+              <input
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(1);
+                }}
+                placeholder="Search leads..."
+                className="w-full bg-transparent text-sm text-black outline-none placeholder:text-black/45"
+              />
+            </label>
+            <select
+              value={fitFilter}
+              onChange={(event) => {
+                setFitFilter(event.target.value);
+                setPage(1);
+              }}
+              className="rounded-full border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-black outline-none"
+            >
+              <option value="all">All fits</option>
+              <option value="high">High fit</option>
+              <option value="medium">Medium fit</option>
+              <option value="low">Low fit</option>
+            </select>
+            <select
+              value={sortBy}
+              onChange={(event) => {
+                setSortBy(event.target.value);
+                setPage(1);
+              }}
+              className="rounded-full border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-black outline-none"
+            >
+              <option value="freshest">Sort: Freshest</option>
+              <option value="fit">Sort: Best fit</option>
+              <option value="company">Sort: Company A-Z</option>
+            </select>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <select
+            value={locationFilter}
+            onChange={(event) => {
+              setLocationFilter(event.target.value);
+              setPage(1);
+            }}
+            className="rounded-full border border-blue-100 bg-white px-4 py-3 text-sm text-black outline-none"
+          >
+            <option value="all">All locations</option>
+            {locationOptions.map((location) => (
+              <option key={location} value={location}>
+                {location}
+              </option>
+            ))}
+          </select>
+          <p className="self-center text-sm text-black/60">
+            {filteredCompanies.length} matching lead{filteredCompanies.length === 1 ? "" : "s"}
+          </p>
+        </div>
+      </section>
+
+      {filteredCompanies.length === 0 && !companiesQuery.isLoading ? (
+        <EmptyState
+          title={companies.length === 0 ? "No companies have been aggregated yet" : "No leads match this search"}
+          description={
+            companies.length === 0
+              ? "Run a campaign first so the backend can import jobs and group them into target companies."
+              : "Try a company name, location, or hire signal to narrow the list."
+          }
+        />
+      ) : (
+        <section className="rounded-[1.8rem] border border-blue-100 bg-white p-6 shadow-[0_12px_28px_rgba(15,15,15,0.05)]">
+          <div className="mb-5 flex flex-col gap-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-black">
+              Company Signals
+            </p>
+            <h2 className="text-2xl font-semibold tracking-tight text-black">
+              Lead signals from website, objective, title, location, and freshness
+            </h2>
+            <p className="max-w-4xl text-sm leading-7 text-black/70">
+              This is the company shortlist generated by the backend importer and objective signal layer.
+            </p>
+          </div>
+
+          <DataTable
+            columns={[
+              {
+                key: "name",
+                header: "Company",
+                render: (row) => (
+                  <div className="space-y-1">
+                    <Link
+                      href={`/companies/${row.id}`}
+                      className="font-semibold text-black transition hover:text-[var(--brand-blue)]"
+                    >
+                      {row.name}
+                    </Link>
+                    <p className="text-xs uppercase tracking-[0.18em] text-black/60">
+                      {row.website}
+                    </p>
+                  </div>
+                ),
+              },
+              { key: "fit", header: "Fit" },
+              { key: "description", header: "Description" },
+              { key: "objectiveSignal", header: "Objective" },
+              { key: "titleMatch", header: "Title" },
+              { key: "location", header: "Location" },
+              { key: "daysActive", header: "Days" },
+            ]}
+            rows={rows}
+            emptyMessage="No companies match the current search and filters."
+          />
+          <PaginationControls
+            page={currentPage}
+            totalPages={totalPages}
+            totalItems={filteredCompanies.length}
+            pageSize={pageSize}
+            itemLabel="leads"
+            onPrevious={() => setPage((current) => Math.max(1, current - 1))}
+            onNext={() => setPage((current) => Math.min(totalPages, current + 1))}
+          />
+        </section>
+      )}
+    </div>
+  );
+}
+

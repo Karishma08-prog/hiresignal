@@ -1,0 +1,2 @@
+report_name,focus,metric,generated_at,summary
+Title Filter Accuracy,Filter quality,68% precision on reviewed sample,2026-05-25,"Compares raw scrape volume to role titles that match RevEngineer-friendly marketing leadership patterns."

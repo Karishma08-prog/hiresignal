@@ -1,0 +1,252 @@
+id,site,title,companyName,location,jobUrl,datePosted,jobType,isRemote,minAmount,maxAmount,currency,interval,description
+himalayas-https://himalayas.app/companies/water-security/jobs/initiativbewerbung-festanstellung,himalayas,Initiativbewerbung (Festanstellung),water IT Security GmbH,Germany,https://himalayas.app/companies/water-security/jobs/initiativbewerbung-festanstellung,2026-05-30,,true,,,,,"### deine mission
+
+**Lust auf IT-Security, aber keine passende Stelle gefunden?**
+
+Du willst mit uns die IT-Security-Welt sicherer machen, aber keine unserer offenen Stellen passt perfekt zu dir? Kein Problem – wir freuen uns auf deine Initiativbewerbung!
+
+Erzähl uns, wer du bist, was dich antreibt und wie du water IT Security bereichern kannst!
+
+### deine skills
+
+*   Begeisterung für IT-Security & innovative Lösungen
+*   Eine offene, teamorientierte Art
+*   Eigeninitiative & Lust, Verantwortung zu übernehmen
+
+### dein deal
+
+*   Work & Sleep in unseren modernen Büroapartments in Düsseldorf und Wien
+    
+*   Mental Health Programm „OpenUp Family“ – für dich und 3 weitere Lieblingsmenschen
+    
+*   ### 50 € monatliche Internetpauschale
+    
+*   20 € Lieferando-Budget – weil leider geil?
+    
+*   ### water-Shop mit coolem Merch
+    
+*   Corporate Benefits in den Bereichen Mode, Reisen, Technik und mehr
+    
+*   Betriebliche Krankenversicherung inkl. Zahnversicherung & Krebs-Vorsorge-Scan
+    
+*   Betriebliche Altersvorsorge mit 25% Zuschuss (steigend nach 3 und 5 Jahren)
+    
+*   ### Jobrad #theyseemerollliiiiing
+    
+*   Edenred-Cash-Karte mit monatlich 44 € steuerfreiem Sachbezug
+    
+*   Firmenfitness mit EGYM Wellpass - für die Zeit nach den Neujahrsvorsätzen :P
+    
+*   ### Diensthandy – auch zur privaten Nutzung
+    
+
+### Zusätzlich für Senior-Positionen:
+
+*   Option auf Firmenwagen oder BahnCard zur privaten Nutzung
+    
+
+### deine konditionen
+
+*   Vertrauensurlaub – du bestimmst über den gesetzlichen Mindesturlaub hinaus, wie viel Pause du brauchst
+*   Flexible Arbeitszeiten
+*   100% remote – arbeite bis zu 182 Tage pro Jahr aus dem EU-Ausland
+
+Originally posted on [Himalayas](https://himalayas.app)"
+himalayas-https://himalayas.app/companies/lumin-digital/jobs/sr-application-security-engineer,himalayas,Sr. Application Security Engineer,Lumin Digital,United States,https://himalayas.app/companies/lumin-digital/jobs/sr-application-security-engineer,2026-05-30,,true,155000,175000,USD,yearly,"### Basic Function
+
+The Senior Application Security Engineer is a hands-on technical leader responsible for securing [Lumin Digital](https://himalayas.app/companies/lumin-digital)’s B2B2C SaaS platform across the full software development lifecycle. This role exists at the intersection of application security and AI-augmented engineering: the ideal candidate actively uses AI-powered tools such as Claude Code and Claude Security in their daily workflow to find vulnerabilities faster, automate remediation, and scale security coverage beyond what traditional approaches allow. As AI rapidly transforms how code is written, reviewed, and deployed, this engineer will lead the effort to secure AI-integrated applications, harden CI/CD pipelines, and establish governance for responsible AI adoption across product and engineering teams. Success in this role requires deep technical fluency, a bias toward building and doing over advising, and the ability to operate independently in a fast-moving, remote-first environment.
+
+### Essential Functions and Responsibilities:
+
+*   Lead security architecture reviews for new and existing applications, ensuring secure-by-design principles are embedded from initial design through deployment and ongoing operation.
+    
+*   Develop, enforce, and continuously refine secure coding standards across engineering teams through a combination of automated security scans (SAST, DAST, SCA), AI-assisted code review using tools such as Claude Code, periodic manual code audits, and targeted secure development training.
+    
+*   Own the design, implementation, and evolution of Application Security Posture Management (ASPM) capabilities, integrating signals from static analysis, dynamic testing, software composition analysis, and runtime telemetry to build risk-scoring models that balance exploitability, data sensitivity, and business impact.
+    
+*   Continuously improve threat modeling frameworks across application components, third-party integrations, cloud-native architectures, and AI/LLM-powered features, leveraging tools such as Claude Security for accelerated threat model generation and scenario analysis.
+    
+*   Develop custom security automation tools and scripts to improve detection and response capabilities across cloud environments, including AI-assisted vulnerability auto-fix workflows and integration of AI-powered security tooling into CI/CD pipelines.
+    
+*   Own and operate the company’s bug bounty program end-to-end: define program strategy and scope, triage and validate external researcher submissions, assess severity, and maintain productive engagement with the security research community.
+    
+*   Manage vulnerability triage and prioritization processes, ensuring vulnerabilities are assessed based on exploitability, business impact, and compliance requirements, and that remediation timelines align with organizational risk tolerance.
+    
+*   Influence product roadmaps by identifying and advocating for security enhancements aligned with evolving regulatory requirements, industry best practices, and the emerging threat landscape for AI-integrated applications.
+    
+*   Mentor security engineers and developers through hands-on guidance in secure coding, vulnerability remediation, and effective use of AI-augmented security workflows.
+    
+*   Present security findings, risk assessments, and program metrics to senior leadership, clients, auditors, and regulators in a clear, actionable manner.
+    
+*   ### Perform other duties as assigned.
+    
+
+### Physical Demands:
+
+*   While performing the duties of this job, the employee is regularly required to sit; use hands to type, handle, or feel and talk or hear.
+    
+*   Specific vision abilities required by this job include close vision.
+    
+*   Ability to occasionally lift/move up to 25 pounds.
+    
+*   Individuals with a disability who are otherwise able to perform the essential functions of the job may request reasonable accommodation through the Human Resources department.
+    
+
+### Supervisory Responsibility:
+
+### None
+
+### Position Specifications
+
+### Education:
+
+*   Bachelor’s in Computer Science, Cybersecurity, Information Assurance, Software Engineering, or a related field, or an equivalent combination of education and experience.
+    
+*   Preferred certifications: CSSLP, OSCP, GWEB, or GWAPT.
+    
+
+### Experience:
+
+*   Seven (7+) years of progressive experience in application security, software security engineering, or a closely related domain within production SaaS environments.
+    
+*   Extensive hands-on experience in secure software development, DevSecOps pipeline design, and security testing methodologies (SAST, DAST, SCA, penetration testing).
+    
+*   Demonstrated experience securing large-scale cloud-native applications, APIs, and microservices architectures.
+    
+*   Experience leading application security initiatives, defining program strategy, and mentoring engineering teams on secure development practices.
+    
+*   Demonstrated, regular hands-on use of AI-powered security and development tools (e.g., Claude Code, Claude Security, or comparable coding/security assistants) as part of daily security engineering workflows, not solely in an evaluative, advisory, or training capacity.
+    
+*   Experience assessing AI-specific attack surfaces in LLM-integrated applications, including prompt injection, context leakage, insecure tool use, and model denial-of-service.
+    
+
+### Knowledge, Skills, & Abilities:
+
+### Required:
+
+*   Deep expertise in AWS security, Kubernetes security, and cloud-native application security best practices.
+    
+*   Strong programming proficiency with the ability to review and assess security risks in one or more of: Java, C#, JavaScript/TypeScript, Python, Swift, or Kotlin.
+    
+*   Expertise in secure authentication and authorization mechanisms, including OAuth 2.0, OIDC, SAML, JWT, WebAuthn, and Zero Trust principles.
+    
+*   Hands-on proficiency with AI-augmented security workflows, including daily use of AI tools (e.g., Claude Code, Claude Security) for vulnerability discovery, remediation assistance, threat modeling, and security automation across the SDLC.
+    
+*   Strong understanding of OWASP Top 10, OWASP Top 10 for LLM Applications, SANS 25, CVSS/EPSS scoring, and MITRE ATT&CK framework.
+    
+*   Ability to identify, assess, and mitigate prompt injection vulnerabilities (direct and indirect) in LLM-integrated applications through input validation, output sanitization, instruction hierarchy enforcement, and adversarial prompt testing.
+    
+*   Experience with secure context window management in AI-powered products, including preventing sensitive data leakage, enforcing context isolation boundaries, and defining data classification policies for AI model inputs.
+    
+*   Hands-on experience with security automation and scripting (Python, Bash, or equivalent).
+    
+*   Proficiency in penetration testing methodologies, including automated and manual security testing of web applications, APIs, and mobile platforms.
+    
+*   Strong knowledge of encryption standards, cryptographic best practices, and secrets management.
+    
+*   Ability to communicate complex security concepts to both technical and non-technical audiences, and to present risk assessments to senior leadership and external stakeholders.
+    
+*   Demonstrated ability to work independently in a remote setting while maintaining high performance and accountability.
+    
+
+### Preferred:
+
+*   Experience evaluating the security posture of AI providers (API security reviews, data residency assessments, vendor risk questionnaires, and contractual security requirements).
+    
+*   Familiarity with AI model access controls and secrets hygiene in AI pipelines, including least-privilege principles for LLM tool integrations and securing model inference endpoints.
+    
+*   Experience with SIEM, WAF, and security monitoring tools.
+    
+*   Familiarity with cloud security controls in AWS, including IAM, security groups, KMS, Lambda security, and cloud monitoring.
+    
+*   Strong project management abilities and experience collaborating across product, engineering, and compliance teams.
+    
+
+### Travel:
+
+*   Minimal, generally 12 days or less per year, ~2X team get-togethers a year.
+    
+
+### LIFE AT LUMIN DIGITAL
+
+[Lumin Digital](https://himalayas.app/companies/lumin-digital) is a trailblazer in digital banking solutions, driven by a unique approach to technology, service, and people. We empower credit unions and banks by creating cutting-edge digital experiences that continuously serve, engage, and grow their membership base — and as a 100% cloud-native company, we're purpose-built to unlock the full advantages of the cloud for financial institutions and their users.
+
+At Lumin, we thrive on curiosity and innovation. Our culture is built on trust in our expertise and decisions, respect for diverse perspectives and talents, and boldness in pursuing new ideas. These values shape a workplace where collaboration thrives, ideas flourish, and new possibilities are discovered every day. We encourage our team to explore, experiment, and challenge the status quo — because continuous improvement isn't just a goal, it's how we operate.
+
+**Benefits Include** We take care of our people with medical, dental, and vision insurance, a 401(k) with company match, flexible PTO plus 12 paid holidays, paid sick leave, and paid parental and family leave. We also offer a lifestyle spending account, tuition reimbursement, and a cell phone stipend. Additional details are provided during the interview process.
+
+[Lumin Digital](https://himalayas.app/companies/lumin-digital) is an equal opportunity employer. We consider all qualified applicants without regard to race, color, religion, sex, national origin, disability, protected veteran status, sexual orientation, gender identity, or any other legally protected basis.
+
+For more information, visit [lumindigital.com](http://lumindigital.com/).
+
+Originally posted on [Himalayas](https://himalayas.app)"
+himalayas-https://himalayas.app/companies/niryu/jobs/senior-backend-engineer-payments-platform,himalayas,Senior Backend Engineer - Payments Platform,NirYu,United States,https://himalayas.app/companies/niryu/jobs/senior-backend-engineer-payments-platform,2026-05-30,,true,,,,,"### The Role:
+
+You are full stack but you live on the backend. You care deeply about what happens when a payment fails, an API returns an unexpected response, or a queue backs up at 2am. You will own the backend services, payment workflows, and event-driven systems that sit at the core of our platform — and you will touch the frontend when the team needs it.
+
+This is a high-intensity role at an early-stage company. This role will ask more of you than a typical engineering job — systems need to stay up, deadlines are real, and the team is small.
+
+### Responsibilities:
+
+*   Production Node.js backend services and REST APIs — versioned, contract-stable, and hardened
+    
+*   ACH payment workflows end-to-end — debits, credits, retries, failure handling, virtual account ledgering, and reconciliation
+    
+*   Event-driven services using AWS SQS and webhooks for reliable asynchronous processing
+    
+*   PostgreSQL schemas that support complex financial workflows with integrity under failure
+    
+*   CI/CD contributions and test coverage that gives the team genuine confidence to ship
+    
+*   Internal React dashboards and operational tooling when needed
+    
+*   Design documentation, deployment runbooks, and scalability notes that you write because you are proud of the work — not because someone asked
+    
+*   You will occasionally work directly with customers to support integrations, troubleshoot live workflows, and demonstrate platform capabilities — you are comfortable representing the product outside the codebase
+    
+
+### Requirements:
+
+**Must Have:**
+
+*   **6–7 years engineering experience with a strong backend focus**
+    
+*   ### **Production Node.js and REST API design**
+    
+*   **Solid PostgreSQL — schema design, query optimization, data integrity**
+    
+*   **AWS — Lambda, RDS, SQS, API Gateway, Secrets Manager**
+    
+*   **OpenAPI / Swagger documentation experience**
+    
+*   **Event-driven systems experience — queues, webhooks, retry and failure logic**
+    
+*   **CI/CD pipeline experience and automated deployment workflows**
+    
+*   **You obsess over API design, documentation, deployment, scalability, and observability**
+    
+*   **Cross-functional communicator — comfortable working directly with Product, QA, DevOps, and business stakeholders**
+    
+*   **Agile practitioner — sprint planning, backlog grooming, and code reviews are second nature**
+    
+*   **End-to-end owner — you do not hand off, you follow through to production**
+    
+
+### **Strong Plus:**
+
+*   **ACH payment workflows and NACHA operating rules**
+    
+*   **Wire, debit card, and real-time payment rail experience beyond ACH**
+    
+*   **Experience with Java, Spring frameworks, or similar enterprise backend frameworks**
+    
+*   **Regulated fintech compliance — audit logging, idempotency, SOC 2**
+    
+*   **NestJS or similar structured Node.js frameworks**
+    
+*   **AI-assisted development tools — Claude, GitHub Copilot, Cursor**
+    
+*   **Team lead experience with mentoring junior team members**
+    
+
+Originally posted on [Himalayas](https://himalayas.app)"

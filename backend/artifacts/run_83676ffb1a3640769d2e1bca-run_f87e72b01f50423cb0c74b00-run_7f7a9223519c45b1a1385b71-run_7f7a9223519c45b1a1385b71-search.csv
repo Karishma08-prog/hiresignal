@@ -1,0 +1,207 @@
+id,site,title,companyName,location,jobUrl,datePosted,jobType,isRemote,minAmount,maxAmount,currency,interval,description
+li-software-engineer-new-grads-at-giga-4370317193,linkedin,Software Engineer (New Grads),Giga,"San Francisco, CA",https://www.linkedin.com/jobs/view/software-engineer-new-grads-at-giga-4370317193,2026-05-27,volunteer,false,160000,250000,USD,yearly,"**About Giga  
+  
+**Giga has recently raised a $61M Series A and has several paying customers, including DoorDash. We’re building the next generation of customer experience — real-time AI agents that can understand emotion, resolve issues instantly, and scale across the world’s largest enterprises.  
+  
+It’s an exciting inflection point for the company. While we have been successful, we have larger ambitions. Our goal is to become the go-to AI platform for all enterprise automation, powered by our voice superintelligence. To achieve this, we need more great engineers.  
+  
+The work affects millions of people every day and our engineers have autonomy and make true impact. This opportunity is unique because we have brilliant founders, have found commercial success, and see a clear path to becoming a generational company. Some further info about us:  
+  
+
+*   Voice AI startup Giga raises $61M Series A
+*   DoorDash and Giga Partnership  
+      
+    
+
+Giga builds AI agents trusted by the largest B2C companies in the world. Industry leaders like DoorDash trust Giga with their most complex support and operations workflows across voice, chat, and email. If being a part of this resonates with you, please apply!  
+  
+**The Role  
+  
+**We're looking for new grad engineers to help build the systems that power our AI agents. You'll work across the backend, from data pipelines and integrations to agent infrastructure, shipping features alongside experienced engineers.  
+  
+This is a role where you'll contribute to real problems from day one. We expect you to ramp up quickly, take ownership of your work, and operate with increasing independence as you learn the codebase.  
+  
+**What You'll Work On  
+  
+**You'll contribute to projects across our stack. Some examples:  
+  
+
+*   Atlas: Building features for our AI assistant: charts and alerts in Slack, natural language queries, and expanding Atlas to manage platform resources
+*   Activity Stream: Log visualization with filters, timestamps, and frequency charts to give visibility into agent behavior
+*   Dynamic knowledge: Adding time-based knowledge (like ongoing incidents) that auto-updates from sources like status pages
+*   Agent memory: Conversation awareness and recent interaction lookups so agents remember context across sessions  
+      
+    
+
+You'll be paired with senior engineers on larger initiatives while also owning smaller projects end-to-end as you ramp up.  
+  
+**You Might Be a Fit If You  
+  
+**
+
+*   Are graduating (or recently graduated) with a CS degree or equivalent background
+*   Have internship experience or significant projects where you wrote production-quality code
+*   Can take a problem, figure out an approach, and unblock yourself when you get stuck
+*   Prefer shipping over perfection but still care about quality
+*   Want to work at a startup where you'll have real responsibility early  
+      
+    
+
+**Perks & Benefits  
+  
+**
+
+*   Catered lunch daily
+*   Dinner stipend
+*   $150/month wellness benefit (gym, fitness classes, mental health)
+*   401(k) plan
+*   Commuter benefits
+*   Medical, dental, and vision coverage  
+      
+    
+
+Giga is an equal opportunity employer. We're committed to providing equal employment opportunities regardless of race, color, religion, sex, sexual orientation, gender identity, national origin, age, disability, veteran status, or any other characteristic protected by law.  
+  
+Compensation Range: $160K - $250K  
+  
+
+Show more Show less"
+li-software-engineer-i-at-sony-interactive-entertainment-4414360574,linkedin,Software Engineer I,Sony Interactive Entertainment,"San Mateo, CA",https://www.linkedin.com/jobs/view/software-engineer-i-at-sony-interactive-entertainment-4414360574,2026-05-22,fulltime,false,137300,205900,USD,yearly,"**Why Sony Interactive Entertainment?  
+  
+**Sony Interactive Entertainment isn’t just the Best Place to Play — it’s also the Best Place to Work. Sony Interactive Entertainment (SIE) is the company behind the PlayStation brand. As a subsidiary of Sony Group Corporation, we’re part of a proud legacy of innovation and excellence. SIE is a dynamic technology company, delivering cutting-edge hardware and network services to more than 100 million people and an entertainment leader, home to some of the most beloved and recognizable intellectual properties (IP) in the world. Our role at SIE is to create and nurture the experiences under the PlayStation brand, a name synonymous with entertainment excellence and creativity.  
+  
+**Software Engineer I – Trust & Safety Platform  
+  
+**PlayStation isn’t just the Best Place to Play — it’s also the Best Place to Work. Today, we’re recognized as a global leader in entertainment producing The PlayStation family of products and services including PlayStation®5, PlayStation®4, PlayStation®VR2, PlayStation®Plus, PlayStation™PC, acclaimed PlayStation software titles from PlayStation Studios, and more.  
+  
+PlayStation also strives to create an inclusive environment that empowers employees and embraces diversity. We welcome and encourage everyone who has a passion and curiosity for innovation, technology, and play to explore our open positions and join our growing global team.  
+  
+The PlayStation brand falls under Sony Interactive Entertainment, a wholly owned subsidiary of Sony Corporation.  
+  
+**Location  
+  
+**San Diego  
+  
+**About The Team  
+  
+**We are building scalable Trust & Safety platforms and developer tools that help create safer online gaming experiences for players and creators worldwide. Our teams develop moderation systems, safety tooling, policy enforcement workflows, telemetry platforms, and operational infrastructure that support modern multiplayer and user-generated ecosystems.  
+  
+This role sits at the intersection of backend systems, cloud infrastructure, web applications, analytics, and operational tooling. You will partner closely with platform engineers, trust & safety teams, game studios, and product stakeholders to design and deliver reliable systems that improve player safety, operational efficiency, and developer productivity.  
+  
+**What You’ll Do  
+  
+**As a Software Engineer I, you will:  
+  
+
+*   Design and build scalable web applications and backend services that power Trust & Safety operations and player protection systems.
+*   Develop modern frontend experiences using React/TypeScript and backend services using Node.js, Python, Go, or similar technologies.
+*   Build internal moderation tools, policy enforcement systems, telemetry dashboards, analytics platforms, and operational workflows.
+*   Design APIs and platform services that integrate with multiplayer and live-service gaming ecosystems.
+*   Contribute to cloud-native infrastructure running on Kubernetes/GCP/AWS, including CI/CD pipelines, observability, and deployment automation.
+*   Improve reliability, scalability, and operational visibility across safety and platform services.
+*   Partner with cross-functional teams including product managers, data engineers, security teams, policy stakeholders, and game studios.
+*   Help drive automation and developer productivity through tooling, operational frameworks, and platform improvements.
+*   Contribute to technical discussions and collaborate with senior engineers on platform design and implementation.
+*   Learn and grow within a collaborative engineering culture focused on quality, innovation, and continuous improvement.  
+      
+    
+
+**Areas You May Work On  
+  
+**Depending on your background and interests, you may contribute to:  
+  
+
+*   Trust & Safety platforms and moderation systems
+*   Policy enforcement workflows and operational tooling
+*   Telemetry, analytics, and observability platforms
+*   AI-assisted moderation and safety workflows
+*   Developer tools and internal operational dashboards
+*   Game platform APIs and backend services
+*   CI/CD and deployment automation systems
+*   Cloud-native infrastructure and orchestration
+*   Reliability engineering and operational excellence initiatives
+*   Studio-facing integrations and safety enablement tooling  
+      
+    
+
+**Qualifications  
+  
+****Required Qualifications  
+  
+**
+
+*   Bachelor’s degree in Computer Science or related field, or equivalent practical experience.
+*   1-3 years of software engineering experience through internships, academic projects, or professional work.
+*   Experience with modern frontend technologies such as React, TypeScript, JavaScript, or similar frameworks.
+*   Experience developing backend services or APIs using Node.js, Python, Java, Go, or similar languages.
+*   Experience building and consuming RESTful APIs and microservices.
+*   Experience with cloud platforms such as GCP, AWS, or Azure.
+*   Familiarity with containerization and orchestration technologies such as Docker and Kubernetes.
+*   Strong understanding of software engineering fundamentals, data structures, and problem-solving skills.
+*   Experience working in collaborative Agile development environments.
+*   Good communication and collaboration skills with a willingness to learn from cross-functional teams.  
+      
+    
+
+**Preferred Qualifications  
+  
+**
+
+*   Internship, academic, or project experience working on scalable applications, gaming platforms, or live-service systems is a plus.
+*   Familiarity with telemetry, analytics, operational tooling, or cloud technologies is a plus.
+*   Interest in building developer tools, operational platforms, or internal web applications.
+*   Interest in Trust & Safety systems, moderation tooling, abuse prevention, or player safety technologies.
+*   Familiarity with CI/CD workflows, Git-based development, or cloud infrastructure is a plus.
+*   Interest in automation, AI-assisted workflows, or platform engineering is a plus.
+*   Passion for player safety, developer experience, and platform innovation.  
+      
+    
+
+**What We Value  
+  
+**We are looking for engineers who:  
+  
+
+*   Demonstrate curiosity, initiative, and a willingness to learn.
+*   Enjoy solving technical problems and collaborating with others.
+*   Communicate effectively and work well within a team environment.
+*   Care about engineering quality, reliability, and user experience.
+*   Are excited about building scalable systems and tools.
+*   Have an interest in gaming, Trust & Safety, and platform technology.
+*   Bring a growth mindset and a collaborative attitude.  
+      
+    
+
+**Why Join Us  
+  
+**You’ll have the opportunity to help shape the future of Trust & Safety technology in gaming while working on large-scale distributed systems, operational tooling, and developer platforms used across live gaming ecosystems.  
+  
+You’ll tackle technically challenging problems involving scalability, reliability, moderation workflows, telemetry, and cloud infrastructure — all while collaborating with talented engineers and cross-functional partners focused on creating safer and more inclusive player experiences.  
+  
+If you are passionate about building scalable platforms, solving complex engineering challenges, and improving player safety through technology, we’d love to hear from you.  
+  
+**_Please refer to our Candidate Privacy Notice for more information about how we process your personal information, and your data protection rights.  
+  
+_**At SIE, we consider several factors when setting each role’s base pay range, including the competitive benchmarking data for the market and geographic location.  
+  
+Please note that the base pay range may vary in line with our hybrid working policy and individual base pay will be determined based on job-related factors which may include knowledge, skills, experience, and location.  
+  
+In addition, this role is eligible for SIE’s top-tier benefits package that includes medical, dental, vision, matching 401(k), paid time off, wellness program and coveted employee discounts for Sony products. This role also may be eligible for a bonus package. Click **here** to learn more.  
+  
+The estimated base pay range for this role is listed below.  
+  
+$137,300—$205,900 USD  
+  
+Please note, Sony Interactive Entertainment conducts background checks at the offer stage for all new employees (which may include criminal background checks for some roles) and will need to process personal information to support these checks.  
+  
+Please refer to our Candidate Privacy Notice for more information about what personal information we collect, how we use it, who we share it with, and your data protection rights.  
+  
+**Equal Opportunity Statement:  
+  
+**_Sony is an Equal Opportunity Employer. All persons will receive consideration for employment without regard to gender (including gender identity, gender expression and gender reassignment), race (including colour, nationality, ethnic or national origin), religion or belief, marital or civil partnership status, disability, age, sexual orientation, pregnancy, maternity or parental status, trade union membership or membership in any other legally protected category.  
+  
+__We strive to create an inclusive environment, empower employees and embrace diversity. We encourage everyone to respond.  
+  
+__Sony Interactive Entertainment is a Fair Chance employer and qualified applicants with arrest and conviction records will be considered for employment._
+
+Show more Show less"

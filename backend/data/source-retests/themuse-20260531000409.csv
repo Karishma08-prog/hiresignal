@@ -1,0 +1,43 @@
+id,site,title,companyName,location,jobUrl,datePosted,jobType,isRemote,minAmount,maxAmount,currency,interval,description
+themuse-21633184,themuse,Lead Control and Protection Application Software Engineer,GE Vernova,"Basauri, Spain",https://www.themuse.com/jobs/gevernova/lead-control-and-protection-application-software-engineer-128936,2026-04-28,,,,,,,"********Job Description Summary********  
+  
+The Lead Engineer will be part of highly motivated dynamic team of engineers. The role involves leading the design and development of modelling techniques for HVDC systems, mentoring engineers and contributing to industry standards. The position also encompasses development and maintenance of control and protection system application software for LCC and VSC HVDC schemes following full SDLC (Software Development Life Cycle).  
+  
+****Job Description****  
+  
+As a Lead Engineer, you will report within the Product Care Department. The successful candidate will be part of a highly motivated, dynamic, and growing team of engineers working on the design and implementation of HVDC Control Systems. This is a very exciting field of control engineering in which GE's leading contribution has worldwide recognition.  
+  
+The Product Care function maintains Control and Protection application software, platform, valve electronics, handling obsolescence and implementing a life cycle process for the parts included, including what and when to communicate to customers, internal as well as external.  
+  
+****Key Responsibilities:****  
+  
+
+*   Lead and take ownership of the design and development of modelling and control techniques in both time- and frequency-domain to satisfy the needs of HVDC market
+*   Lead and take ownership of the development of requirement, design and test specifications for Control & Protection Application
+*   Lead design and development of event and rate driven application software for control and protection systems.
+*   Lead and take ownership of the validation efforts with high-fidelity computer models in Model-in-the-Loop (MIL), Software-in-the-Loop (SIL) and Hardware-in-the-Loop (HIL), using software tools such as MATLAB / Simulink, PSCAD and RSCAD
+*   Apply prior experience and on the job training to solve problems. Propose solutions utilizing in-depth knowledge of a technical discipline, analytical thinking, and technical experience in solving problems.
+*   Proficient in identifying and resolving underlying issues through RCA.
+*   Lead team members on Git, Jira and Confluence for version control, task/defect management and documentation.
+*   Able to understand the collaborative nature of control software development (not a standalone academic exercise)
+*   Curiosity and willingness to question assumptions and ability to explain and understand individual contributions within the bigger system
+*   Interest in real grids and real operating conditions and alignment with long-term learning rather than short-term results
+
+  
+****Qualifications / Essential Requirements:****  
+  
+
+*   Engineering degree in Controls Engineering or equivalent and ideally proven equivalent knowledge and experience in HVDC business.
+*   Proven knowledge in power system modelling, control principles and algorithms used in the VSC and LCC HVDC technologies
+*   Knowledge of HVDC system design, control and protection, including component level interactions and considerations in HVDC schemes
+*   Working knowledge of MATLAB / Simulink for control development
+*   Competent on functional characteristics of power systems and interactions between AC and HVDC systems
+*   Familiar with Agile Software development practices and basics of Git for version control
+*   Strong written/verbal communication skills and can-do attitude.
+
+  
+********Additional Information********  
+  
+**Relocation Assistance Provided:** No  
+  
+#LI-Remote - This is a remote position"

@@ -1,0 +1,14 @@
+﻿{
+    "searchTerm":  "software engineer",
+    "resultsWanted":  2,
+    "sites":  [
+                  "zip_recruiter"
+              ],
+    "budgetSec":  20,
+    "days":  7,
+    "outputCsv":  "c:\\Users\\HP\\Desktop\\hiresignal-frontend\\backend\\data\\source-retests\\manual-zip-20.csv",
+    "headless":  true,
+    "location":  "United States",
+    "country":  "USA",
+    "proxy":  "http://b9f57b3c3911dc470569:d36eed3fe33896bc@gw.dataimpulse.com:823"
+}

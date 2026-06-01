@@ -1,0 +1,1 @@
+C:\Users\HP\botavenv\Scripts\python.exe: can't open file 'C:\\Users\\HP\\Desktop\\Basis': [Errno 2] No such file or directory
