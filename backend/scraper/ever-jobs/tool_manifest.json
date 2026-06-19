@@ -1,0 +1,210 @@
+{
+  "schema_version": "1.0.0",
+  "name": "ever-jobs",
+  "display_name": "Ever Jobs",
+  "description": "Multi-source job search tool. Searches 65+ job boards, ATS platforms, and company career pages (LinkedIn, Indeed, Glassdoor, Greenhouse, Lever, Amazon, Apple, Microsoft, etc.) concurrently and returns normalized, structured job posting data via REST API, CLI, or MCP server.",
+  "version": "0.1.0",
+  "author": "Ever Co",
+  "license": "MIT",
+  "repository": "https://github.com/ever-co/ever-jobs",
+
+  "capabilities": {
+    "job_search": {
+      "description": "Search for jobs across multiple job boards simultaneously",
+      "supported_sites": {
+        "job_boards": ["linkedin", "indeed", "glassdoor", "zip_recruiter", "google", "bayt", "naukri", "bdjobs", "internshala", "exa", "upwork", "dice", "simplyhired", "wellfound", "stepstone", "monster", "careerbuilder", "builtin", "snagajob", "dribbble"],
+        "remote_boards": ["remoteok", "remotive", "weworkremotely", "jobicy", "himalayas", "arbeitnow"],
+        "ats_platforms": ["greenhouse", "lever", "ashby", "workable", "smartrecruiters", "jobvite", "workday", "successfactors", "taleo", "icims", "adp", "ukg", "rippling", "recruitee", "teamtailor", "bamboohr", "personio", "jazzhr"],
+        "company_pages": ["amazon", "apple", "microsoft", "nvidia", "tiktok", "uber", "cursor", "google_careers", "meta", "netflix", "stripe", "openai"],
+        "aggregators": ["usajobs", "adzuna", "reed", "jooble", "careerjet"]
+      },
+      "output_formats": ["json", "csv", "table", "summary"],
+      "features": [
+        "Multi-board concurrent searching (65+ sources)",
+        "Country-aware domain resolution (65+ countries)",
+        "ATS board searching with company slug",
+        "Company-specific career page scraping",
+        "Salary extraction from descriptions",
+        "Annual salary normalization",
+        "Proxy rotation (HTTP/HTTPS/SOCKS5)",
+        "Rate limiting",
+        "Remote job filtering",
+        "Job type filtering",
+        "Description format selection (markdown, html, plain)",
+        "Analytics (summary stats, company intelligence, site comparison)",
+        "MCP server for AI assistant integration"
+      ]
+    }
+  },
+
+  "usage": {
+    "cli": {
+      "command": "npm run cli -- search",
+      "stdin_mode": "echo '{\"searchTerm\": \"engineer\"}' | npm run cli -- search --stdin",
+      "help": "npm run cli -- search --help"
+    },
+    "api": {
+      "endpoint": "POST /api/jobs/search",
+      "docs": "http://localhost:3001/api/docs"
+    }
+  },
+
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "searchTerm": {
+        "type": "string",
+        "description": "Job search keywords (e.g., 'software engineer')"
+      },
+      "siteType": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Sites to search. Omit to search all search + company sources. Provide companySlug for ATS sources."
+      },
+      "companySlug": {
+        "type": "string",
+        "description": "Company identifier for ATS scrapers (e.g., 'stripe', 'notion'). When set without siteType, only ATS scrapers run."
+      },
+      "location": {
+        "type": "string",
+        "description": "Location to search near (e.g., 'San Francisco, CA')"
+      },
+      "resultsWanted": {
+        "type": "integer",
+        "default": 15,
+        "description": "Number of results per site"
+      },
+      "country": {
+        "type": "string",
+        "default": "USA",
+        "description": "Country for Indeed/Glassdoor domain resolution"
+      },
+      "hoursOld": {
+        "type": "integer",
+        "description": "Max job age in hours"
+      },
+      "isRemote": {
+        "type": "boolean",
+        "default": false,
+        "description": "Filter for remote jobs only"
+      },
+      "jobType": {
+        "type": "string",
+        "enum": ["fulltime", "parttime", "internship", "contract"],
+        "description": "Filter by job type"
+      },
+      "descriptionFormat": {
+        "type": "string",
+        "enum": ["markdown", "html", "plain"],
+        "default": "markdown",
+        "description": "Format for job descriptions"
+      },
+      "enforceAnnualSalary": {
+        "type": "boolean",
+        "default": false,
+        "description": "Convert all wages to annual equivalent"
+      },
+      "rateDelayMin": {
+        "type": "number",
+        "description": "Minimum delay between requests in seconds"
+      },
+      "rateDelayMax": {
+        "type": "number",
+        "description": "Maximum delay between requests in seconds"
+      },
+      "linkedinFetchDescription": {
+        "type": "boolean",
+        "default": false,
+        "description": "Fetch full LinkedIn job descriptions (slower but more detailed)"
+      },
+      "linkedinCompanyIds": {
+        "type": "array",
+        "items": { "type": "integer" },
+        "description": "Filter LinkedIn results by company IDs"
+      },
+      "proxies": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Proxy URLs for rotation"
+      }
+    },
+    "required": []
+  },
+
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "count": { "type": "integer", "description": "Total number of jobs found" },
+      "cached": { "type": "boolean", "description": "Whether results came from cache" },
+      "jobs": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "site": { "type": "string" },
+            "title": { "type": "string" },
+            "companyName": { "type": "string" },
+            "companyUrl": { "type": "string" },
+            "jobUrl": { "type": "string" },
+            "jobUrlDirect": { "type": "string" },
+            "location": {
+              "type": "object",
+              "properties": {
+                "city": { "type": "string" },
+                "state": { "type": "string" },
+                "country": { "type": "string" }
+              }
+            },
+            "description": { "type": "string" },
+            "datePosted": { "type": "string", "format": "date" },
+            "isRemote": { "type": "boolean" },
+            "jobType": { "type": "array", "items": { "type": "string" } },
+            "compensation": {
+              "type": "object",
+              "properties": {
+                "interval": { "type": "string" },
+                "minAmount": { "type": "number" },
+                "maxAmount": { "type": "number" },
+                "currency": { "type": "string" }
+              }
+            },
+            "emails": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    }
+  },
+
+  "examples": [
+    {
+      "name": "Basic job search",
+      "input": {
+        "searchTerm": "software engineer",
+        "siteType": ["indeed"],
+        "location": "San Francisco",
+        "resultsWanted": 5
+      }
+    },
+    {
+      "name": "Remote TypeScript jobs",
+      "input": {
+        "searchTerm": "typescript developer",
+        "siteType": ["linkedin", "indeed"],
+        "isRemote": true,
+        "resultsWanted": 20
+      }
+    },
+    {
+      "name": "Business development intelligence",
+      "input": {
+        "searchTerm": "VP engineering",
+        "siteType": ["linkedin"],
+        "location": "New York",
+        "resultsWanted": 50,
+        "linkedinFetchDescription": true,
+        "descriptionFormat": "plain"
+      }
+    }
+  ]
+}

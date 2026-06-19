@@ -1,0 +1,58 @@
+version: "3.8"
+
+services:
+  ever-jobs-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ever-jobs-api:latest
+    container_name: ever-jobs-api
+    ports:
+      - "${PORT:-3001}:3001"
+    env_file:
+      - .env
+    environment:
+      # Override or set defaults here
+      NODE_ENV: production
+      PORT: 3001
+
+      # API Security
+      ENABLE_API_KEY_AUTH: ${ENABLE_API_KEY_AUTH:-false}
+      API_KEYS: ${API_KEYS:-}
+      API_KEY_HEADER_NAME: ${API_KEY_HEADER_NAME:-x-api-key}
+
+      # Rate Limiting
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_REQUESTS: ${RATE_LIMIT_REQUESTS:-100}
+      RATE_LIMIT_TIMEFRAME: ${RATE_LIMIT_TIMEFRAME:-3600}
+
+      # Caching
+      ENABLE_CACHE: ${ENABLE_CACHE:-true}
+      CACHE_EXPIRY: ${CACHE_EXPIRY:-3600}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      # CORS
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+
+      # Search Defaults
+      DEFAULT_SITE_NAMES: ${DEFAULT_SITE_NAMES:-linkedin,indeed,zip_recruiter,glassdoor,google}
+      DEFAULT_RESULTS_WANTED: ${DEFAULT_RESULTS_WANTED:-20}
+      DEFAULT_DISTANCE: ${DEFAULT_DISTANCE:-50}
+      DEFAULT_DESCRIPTION_FORMAT: ${DEFAULT_DESCRIPTION_FORMAT:-markdown}
+      DEFAULT_COUNTRY: ${DEFAULT_COUNTRY:-USA}
+
+      # Swagger
+      ENABLE_SWAGGER: ${ENABLE_SWAGGER:-true}
+      SWAGGER_PATH: ${SWAGGER_PATH:-api/docs}
+
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
