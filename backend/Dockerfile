@@ -17,11 +17,7 @@ COPY alembic.ini /app/alembic.ini
 COPY alembic /app/alembic
 COPY app /app/app
 COPY run_worker.py /app/run_worker.py
-COPY scraper /app/scraper
-
-RUN if [ -f /app/scraper/ever-jobs/package-lock.json ]; then \
-      cd /app/scraper/ever-jobs && npm ci; \
-    fi
+RUN mkdir -p /app/scraper
 
 EXPOSE 8000
 
