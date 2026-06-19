@@ -10,13 +10,19 @@ export async function getCompaniesPage({
   page = 1,
   pageSize = 100,
   campaignRunId,
+  fit,
+  priority,
+  search,
 }: {
   page?: number;
   pageSize?: number;
   campaignRunId?: string;
+  fit?: string;
+  priority?: string;
+  search?: string;
 } = {}) {
   const response = await api.get<ApiPaginatedResponse<Company>>("/companies", {
-    params: { page, pageSize, campaignRunId },
+    params: { page, pageSize, campaignRunId, fit, priority, search },
   });
   return response.data;
 }

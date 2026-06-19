@@ -1,4 +1,5 @@
 import type { SourceOverview } from "@/lib/types/source";
+import { isGlobalLocation, toBackendCountry } from "@/lib/location-options";
 
 export type SourceLaunchMode = "search" | "browser" | "ats";
 
@@ -10,6 +11,12 @@ export type SelectedSourceRuntime = {
   isRunnable: boolean;
   blockingReason: string | null;
   note: string | null;
+};
+
+export type RunnableSourceConfig = {
+  searchBoards: string[];
+  browserBoards: string[];
+  atsBoards: string[];
 };
 
 const RUNNABLE_WORKING_STATUSES = new Set([
@@ -24,16 +31,19 @@ const RUNNABLE_SUPPORT_TIERS = new Set([
   "fallback_supported",
 ]);
 
+const DISABLED_SUPPORT_TIERS = new Set([
+  "disabled",
+]);
+
 export function normalizeSourceKey(value: string) {
   return value.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
 }
 
 export function inferCountry(location: string) {
-  const normalized = location.toLowerCase();
-  if (normalized.includes("india")) return "INDIA";
-  if (normalized.includes("uk")) return "UK";
-  if (normalized.includes("europe")) return "UK";
-  return "USA";
+  if (isGlobalLocation(location)) {
+    return "GLOBAL";
+  }
+  return toBackendCountry(location);
 }
 
 export function isLaunchableSource(source: SourceOverview) {
@@ -129,6 +139,40 @@ export function resolveSourceRuntime(
   };
 }
 
+export function isActiveLaunchSource(source: SourceOverview) {
+  if (!isLaunchableSource(source)) {
+    return false;
+  }
+
+  const launchMode = inferSourceLaunchMode(source);
+  const supportTier = source.supportTier?.toLowerCase() ?? "";
+  const setupBlocked = source.workingStatus === "needs_setup";
+  const degraded =
+    source.status === "failed" || source.workingStatus === "failing_or_unreliable";
+  const credentialReady =
+    source.status === "running" ||
+    source.status === "ready" ||
+    source.credentialPresent ||
+    Boolean(source.credentialVerifiedAt) ||
+    (!source.needsApiKey && !source.needsProxy && launchMode === "search");
+  const allowedTier =
+    supportTier === "live_supported" || supportTier === "fallback_supported";
+
+  return (
+    !setupBlocked &&
+    !degraded &&
+    credentialReady &&
+    allowedTier &&
+    !DISABLED_SUPPORT_TIERS.has(supportTier)
+  );
+}
+
+export function formatSourceLabel(sourceKey: string) {
+  return sourceKey
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
 export function getSuggestedRunnableSources(sources: SourceOverview[], limit = 4) {
   return sources
     .filter(
@@ -145,4 +189,26 @@ export function getSuggestedRunnableSources(sources: SourceOverview[], limit = 4
       return left.displayName.localeCompare(right.displayName);
     })
     .slice(0, limit);
+}
+
+export function getAllRunnableSourceConfig(sources: SourceOverview[]): RunnableSourceConfig {
+  return sources.reduce<RunnableSourceConfig>(
+    (config, source) => {
+      if (!isActiveLaunchSource(source)) {
+        return config;
+      }
+
+      const sourceKey = normalizeSourceKey(source.siteKey);
+      const launchMode = inferSourceLaunchMode(source);
+      if (launchMode === "ats") {
+        config.atsBoards.push(sourceKey);
+      } else if (launchMode === "browser") {
+        config.browserBoards.push(sourceKey);
+      } else {
+        config.searchBoards.push(sourceKey);
+      }
+      return config;
+    },
+    { searchBoards: [], browserBoards: [], atsBoards: [] },
+  );
 }

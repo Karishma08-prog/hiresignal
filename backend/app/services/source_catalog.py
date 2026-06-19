@@ -84,25 +84,30 @@ FREE_ZERO_CONFIG_SOURCE_METADATA: dict[str, dict[str, object]] = {
     "remotive": _search_source(
         "Remotive",
         category="remote",
+        risk_level="core",
         notes="Remote-first source with consistent zero-config coverage.",
     ),
     "weworkremotely": _search_source(
         "We Work Remotely",
         category="remote",
+        risk_level="core",
         notes="Remote-first source with consistent zero-config coverage.",
     ),
     "himalayas": _search_source(
         "Himalayas",
         category="remote",
+        risk_level="core",
         notes="Remote-heavy listings with good company metadata.",
     ),
     "arbeitnow": _search_source(
         "Arbeitnow",
         category="remote",
+        risk_level="core",
         notes="Remote and visa-sponsored roles; works without keys.",
     ),
     "themuse": _search_source(
         "The Muse",
+        risk_level="core",
         notes="Curated company-profile-rich source with zero-config access.",
     ),
     "workingnomads": _search_source(
@@ -113,10 +118,12 @@ FREE_ZERO_CONFIG_SOURCE_METADATA: dict[str, dict[str, object]] = {
     "builtin": _search_source(
         "Built In",
         region="us",
+        risk_level="core",
         notes="Tech-company-heavy source with useful company metadata.",
     ),
     "landingjobs": _search_source(
         "Landing Jobs",
+        risk_level="core",
         notes="European tech jobs board with zero-config access.",
     ),
     "virtualvocations": _search_source(
@@ -139,6 +146,7 @@ FREE_ZERO_CONFIG_SOURCE_METADATA: dict[str, dict[str, object]] = {
     "jobspresso": _search_source(
         "Jobspresso",
         category="remote",
+        risk_level="core",
         notes="Curated remote jobs with zero-config coverage.",
     ),
     "realworkfromanywhere": _search_source(
@@ -254,11 +262,13 @@ ATS_SOURCE_METADATA: dict[str, dict[str, object]] = {
     "greenhouse": _ats_source(
         "Greenhouse",
         risk_level="core",
+        needs_api_key=False,
         notes="ATS source discovered via slug search against greenhouse boards.",
     ),
     "lever": _ats_source(
         "Lever",
         risk_level="core",
+        needs_api_key=False,
         notes="Startup-friendly ATS discovered via jobs.lever.co slug search.",
     ),
     "ashby": _ats_source(
@@ -267,6 +277,7 @@ ATS_SOURCE_METADATA: dict[str, dict[str, object]] = {
     ),
     "smartrecruiters": _ats_source(
         "SmartRecruiters",
+        needs_api_key=False,
         notes="Public ATS boards discovered via smartrecruiters slug search.",
     ),
     "jobvite": _ats_source(
@@ -432,6 +443,54 @@ SOURCE_METADATA: dict[str, dict[str, object]] = {
     **ADDITIONAL_SOURCE_METADATA,
     **ATS_SOURCE_METADATA,
 }
+
+
+APPROVED_SEARCH_SOURCE_KEYS: set[str] = {
+    "linkedin",
+    "remotive",
+    "weworkremotely",
+    "himalayas",
+    "arbeitnow",
+    "themuse",
+    "builtin",
+    "landingjobs",
+    "jobspresso",
+    "powertofly",
+    "virtualvocations",
+    "workingnomads",
+    "jobsch",
+    "pyjobs",
+    "pythonjobs",
+    "railsjobs",
+    "realworkfromanywhere",
+    "remotefirstjobs",
+    "vuejobs",
+    "hackernews",
+}
+
+APPROVED_BROWSER_SOURCE_KEYS: set[str] = {
+    "indeed",
+    "naukri",
+    "zip_recruiter",
+}
+
+APPROVED_ATS_SOURCE_KEYS: set[str] = {
+    "greenhouse",
+    "lever",
+    "ashby",
+    "smartrecruiters",
+    "jobvite",
+    "workable",
+    "workday",
+    "recruitee",
+    "personio",
+}
+
+APPROVED_SOURCE_KEYS: set[str] = (
+    APPROVED_SEARCH_SOURCE_KEYS
+    | APPROVED_BROWSER_SOURCE_KEYS
+    | APPROVED_ATS_SOURCE_KEYS
+)
 
 
 ATS_SITE_MAP: dict[str, list[str]] = {

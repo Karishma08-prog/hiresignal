@@ -1,10 +1,9 @@
 ﻿"use client";
 
 import { useDeferredValue, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Download, FileSearch, Filter, LineChart, Search } from "lucide-react";
-import { getAllReports } from "@/lib/api/reports";
-import { resolveApiUrl } from "@/lib/api/client";
+import { downloadArtifactById, getReports } from "@/lib/api/reports";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { LoadingState } from "@/components/shared/loading-state";
@@ -18,18 +17,28 @@ export default function ReportsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
   const [page, setPage] = useState(1);
+  const [downloadFeedback, setDownloadFeedback] = useState("");
   const deferredSearch = useDeferredValue(search);
   const pageSize = 6;
   const reportsQuery = useQuery({
     queryKey: ["reports"],
-    queryFn: getAllReports,
+    queryFn: () => getReports(40),
+  });
+  const downloadMutation = useMutation({
+    mutationFn: async (artifactId: string) => downloadArtifactById(artifactId),
+    onSuccess: (fileName) => {
+      setDownloadFeedback(`Downloaded ${fileName}.`);
+    },
+    onError: () => {
+      setDownloadFeedback("The report could not be downloaded. Check that the artifact still exists.");
+    },
   });
 
   const reports = reportsQuery.data ?? [];
   const artifactCount = reports.reduce((total, report) => total + report.artifactIds.length, 0);
 
   const rows = reports.map((report) => {
-    const preferredArtifactId = report.artifactIds[0];
+    const preferredArtifactId = report.artifactIds[0] ?? null;
 
     return {
       id: report.id,
@@ -38,9 +47,7 @@ export default function ReportsPage() {
       metric: report.metric ?? "No metric",
       status: report.status,
       generatedAt: report.generatedAt?.slice(0, 10) ?? "Pending",
-      downloadUrl: preferredArtifactId
-        ? resolveApiUrl(`/artifacts/${preferredArtifactId}/download`)
-        : null,
+      artifactId: preferredArtifactId,
     };
   });
 
@@ -89,6 +96,12 @@ export default function ReportsPage() {
 
       {reportsQuery.isLoading && reports.length === 0 ? (
         <LoadingState label="Loading reports from the backend..." />
+      ) : null}
+
+      {downloadFeedback ? (
+        <div className="rounded-[1.25rem] border border-blue-100 bg-white px-4 py-3 text-sm text-black/80 shadow-[0_12px_24px_rgba(15,15,15,0.04)]">
+          {downloadFeedback}
+        </div>
       ) : null}
 
       <section className="rounded-[1.8rem] border border-blue-100 bg-white p-5 shadow-[0_12px_28px_rgba(15,15,15,0.05)]">
@@ -204,14 +217,19 @@ export default function ReportsPage() {
                     {report.focus}
                   </p>
                 </div>
-                {report.downloadUrl ? (
-                  <a
-                    href={report.downloadUrl}
+                {report.artifactId ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDownloadFeedback("");
+                      downloadMutation.mutate(String(report.artifactId));
+                    }}
+                    disabled={downloadMutation.isPending}
                     className="mt-5 inline-flex items-center gap-2 rounded-full bg-[var(--brand-blue)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
                   >
                     <Download className="h-4 w-4" />
-                    Download
-                  </a>
+                    {downloadMutation.isPending ? "Downloading..." : "Download"}
+                  </button>
                 ) : (
                   <span className="mt-5 inline-flex items-center gap-2 rounded-full border border-blue-100 px-4 py-2 text-sm font-semibold text-black/45">
                     <Download className="h-4 w-4" />
@@ -234,17 +252,22 @@ export default function ReportsPage() {
               },
               { key: "generatedAt", header: "Generated" },
               {
-                key: "downloadUrl",
+                key: "artifactId",
                 header: "Export",
                 render: (row) => (
-                  row.downloadUrl ? (
-                    <a
-                      href={String(row.downloadUrl)}
+                  row.artifactId ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDownloadFeedback("");
+                        downloadMutation.mutate(String(row.artifactId));
+                      }}
+                      disabled={downloadMutation.isPending}
                       className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-white px-3 py-2 text-xs font-semibold text-[var(--brand-blue)] transition hover:border-[var(--brand-blue)]"
                     >
                       <Download className="h-3.5 w-3.5" />
-                      Export
-                    </a>
+                      {downloadMutation.isPending ? "Downloading..." : "Export"}
+                    </button>
                   ) : (
                     <span className="text-xs text-black/45">Unavailable</span>
                   )

@@ -12,6 +12,7 @@ export interface Campaign {
     includeTitles?: string[];
     excludeTitles?: string[];
     includeKeywords?: string[];
+    rolePack?: string;
   };
   objectiveFilterConfig: {
     objective?: string;

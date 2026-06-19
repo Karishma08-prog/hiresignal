@@ -2,8 +2,16 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useState } from "react";
 import { useQueries } from "@tanstack/react-query";
-import { ArrowLeft, Building2, ClipboardList, Clock3, FileStack, ListChecks } from "lucide-react";
+import {
+  ArrowLeft,
+  Building2,
+  ClipboardList,
+  Clock3,
+  FileStack,
+  ListChecks,
+} from "lucide-react";
 import {
   getCampaignRun,
   getRunCompanies,
@@ -18,10 +26,12 @@ import { MetricCard } from "@/components/shared/metric-card";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { deriveRunMode } from "@/lib/run-mode";
+import { formatSourceLabel } from "@/lib/source-launch";
 
 export default function CampaignRunDetailPage() {
   const params = useParams<{ runId: string }>();
   const runId = String(params.runId);
+  const [selectedBoard, setSelectedBoard] = useState("all");
 
   const [runQuery, companiesQuery, jobsQuery, logsQuery, queueQuery] = useQueries({
     queries: [
@@ -71,17 +81,36 @@ export default function CampaignRunDetailPage() {
   const jobs = jobsQuery.data ?? [];
   const logs = logsQuery.data ?? [];
   const resolvedRunMode = deriveRunMode(run, logs);
+  const availableBoards = Array.from(
+    new Set([
+      ...run.sourceSummary.map((source) => source.siteKey),
+      ...jobs.map((job) => job.site),
+    ]),
+  ).sort((left, right) => left.localeCompare(right));
 
-  const sourceRows = run.sourceSummary.map((source) => ({
+  const filteredJobs = selectedBoard === "all"
+    ? jobs
+    : jobs.filter((job) => job.site === selectedBoard);
+  const filteredSourceSummary = selectedBoard === "all"
+    ? run.sourceSummary
+    : run.sourceSummary.filter((source) => source.siteKey === selectedBoard);
+  const filteredCompanyIds = new Set(
+    filteredJobs.map((job) => job.companyId).filter((companyId): companyId is string => Boolean(companyId)),
+  );
+  const filteredCompanies = selectedBoard === "all"
+    ? companies
+    : companies.filter((company) => filteredCompanyIds.has(company.id));
+
+  const sourceRows = filteredSourceSummary.map((source) => ({
     id: source.siteKey,
-    source: source.siteKey,
+    source: formatSourceLabel(source.siteKey),
     status: source.status,
     jobsFound: source.jobsFound,
     duration: source.durationMs ? `${Math.round(source.durationMs / 1000)}s` : "n/a",
     error: source.error ?? "None",
   }));
 
-  const companyRows = companies.slice(0, 12).map((company) => ({
+  const companyRows = filteredCompanies.slice(0, 12).map((company) => ({
     id: company.id,
     company: company.name,
     fit: company.revEngineerFit,
@@ -89,11 +118,11 @@ export default function CampaignRunDetailPage() {
     title: company.titleMatch ?? "No title match",
   }));
 
-  const jobRows = jobs.slice(0, 12).map((job) => ({
+  const jobRows = filteredJobs.slice(0, 12).map((job) => ({
     id: job.id,
     title: job.title,
     company: job.companyName,
-    source: job.site,
+    source: formatSourceLabel(job.site),
     location: job.location ?? "Unknown",
     posted: job.datePosted ?? "Unknown",
   }));
@@ -123,13 +152,13 @@ export default function CampaignRunDetailPage() {
         />
         <MetricCard
           label="Matched jobs"
-          value={String(run.matchedJobCount)}
-          change={`${run.rawJobCount} raw imported rows`}
+          value={String(filteredJobs.length)}
+          change={`${run.rawJobCount} raw imported rows in full run`}
           icon={FileStack}
         />
         <MetricCard
           label="Companies"
-          value={String(run.companyCount)}
+          value={String(filteredCompanies.length)}
           change={`${run.errorCount} source errors`}
           icon={Building2}
         />
@@ -139,6 +168,36 @@ export default function CampaignRunDetailPage() {
           change={queue ? `${queue.status} queue state` : "No queue job record"}
           icon={ListChecks}
         />
+      </section>
+
+      <section className="rounded-[1.8rem] border border-blue-100 bg-white p-5 shadow-[0_12px_28px_rgba(15,15,15,0.05)]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-black/60">
+              Results Filter
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-black">
+              Review one board or all boards together
+            </h2>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={selectedBoard}
+              onChange={(event) => setSelectedBoard(event.target.value)}
+              className="rounded-full border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-black outline-none"
+            >
+              <option value="all">All job boards</option>
+              {availableBoards.map((board) => (
+                <option key={board} value={board}>
+                  {formatSourceLabel(board)}
+                </option>
+              ))}
+            </select>
+            <p className="text-sm text-black/60">
+              {filteredJobs.length} jobs | {filteredCompanies.length} companies
+            </p>
+          </div>
+        </div>
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
@@ -197,7 +256,7 @@ export default function CampaignRunDetailPage() {
                   { key: "error", header: "Error" },
                 ]}
                 rows={sourceRows}
-                emptyMessage="No source-level results have been recorded for this run yet."
+                emptyMessage="No source-level results have been recorded for this board selection yet."
               />
             </div>
           </article>
@@ -259,7 +318,7 @@ export default function CampaignRunDetailPage() {
                   { key: "title", header: "Title Match" },
                 ]}
                 rows={companyRows}
-                emptyMessage="No companies have been matched for this run yet."
+                emptyMessage="No companies match this job-board filter yet."
               />
             </div>
           </article>
@@ -278,7 +337,7 @@ export default function CampaignRunDetailPage() {
                   { key: "posted", header: "Posted" },
                 ]}
                 rows={jobRows}
-                emptyMessage="No jobs have been imported for this run yet."
+                emptyMessage="No jobs have been imported for this board selection yet."
               />
             </div>
           </article>

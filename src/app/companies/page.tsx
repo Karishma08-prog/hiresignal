@@ -1,10 +1,10 @@
-﻿"use client";
+"use client";
 
 import { useDeferredValue, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Building2, Globe2, ScanSearch, Search } from "lucide-react";
-import { getCompanies } from "@/lib/api/companies";
+import { getCompaniesPage } from "@/lib/api/companies";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { LoadingState } from "@/components/shared/loading-state";
@@ -18,87 +18,57 @@ export default function CompaniesPage() {
   const [sortBy, setSortBy] = useState("freshest");
   const [page, setPage] = useState(1);
   const deferredSearch = useDeferredValue(search);
-  const pageSize = 8;
+  const pageSize = 20;
+
   const companiesQuery = useQuery({
-    queryKey: ["companies"],
-    queryFn: () => getCompanies(),
+    queryKey: ["companies", page, deferredSearch, fitFilter],
+    queryFn: () =>
+      getCompaniesPage({
+        page,
+        pageSize,
+        search: deferredSearch.trim() || undefined,
+        fit: fitFilter === "all" ? undefined : fitFilter,
+      }),
   });
 
-  const companies = useMemo(() => companiesQuery.data ?? [], [companiesQuery.data]);
-  const locationOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          companies
-            .map((company) => company.location)
-            .filter((location): location is string => Boolean(location)),
-        ),
-      ).sort(),
-    [companies],
-  );
-  const [locationFilter, setLocationFilter] = useState("all");
+  const companies = useMemo(() => companiesQuery.data?.items ?? [], [companiesQuery.data?.items]);
+  const totalCompanies = companiesQuery.data?.total ?? 0;
 
-  const filteredCompanies = useMemo(() => {
-    const term = deferredSearch.trim().toLowerCase();
-    return companies
-      .filter((company) => {
-        const matchesSearch =
-          !term ||
-          [
-            company.name,
-            company.website,
-            company.domain,
-            company.location,
-            company.objectiveSignal,
-            company.titleMatch,
-          ]
-            .filter(Boolean)
-            .some((value) => String(value).toLowerCase().includes(term));
-        const matchesFit =
-          fitFilter === "all" || company.revEngineerFit.toLowerCase() === fitFilter.toLowerCase();
-        const matchesLocation =
-          locationFilter === "all" || (company.location ?? "Unknown") === locationFilter;
-        return matchesSearch && matchesFit && matchesLocation;
-      })
-      .sort((left, right) => {
-        if (sortBy === "company") {
-          return left.name.localeCompare(right.name);
-        }
-        if (sortBy === "fit") {
-          const rank: Record<string, number> = { high: 3, medium: 2, low: 1 };
-          return (rank[right.revEngineerFit.toLowerCase()] ?? 0) - (rank[left.revEngineerFit.toLowerCase()] ?? 0);
-        }
-        return right.daysActive - left.daysActive;
-      });
-  }, [companies, deferredSearch, fitFilter, locationFilter, sortBy]);
+  const sortedCompanies = useMemo(() => {
+    return [...companies].sort((left, right) => {
+      if (sortBy === "company") {
+        return left.name.localeCompare(right.name);
+      }
+      if (sortBy === "fit") {
+        const rank: Record<string, number> = { high: 3, medium: 2, low: 1 };
+        return (rank[right.revEngineerFit.toLowerCase()] ?? 0) - (rank[left.revEngineerFit.toLowerCase()] ?? 0);
+      }
+      return right.daysActive - left.daysActive;
+    });
+  }, [companies, sortBy]);
 
-  const totalPages = Math.ceil(filteredCompanies.length / pageSize);
-  const currentPage = Math.min(page, Math.max(totalPages, 1));
-  const paginatedCompanies = filteredCompanies.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize,
-  );
-
-  const totalCompanies = companies.length;
-  const rows = paginatedCompanies.map((company) => ({
+  const totalPages = Math.max(1, Math.ceil(totalCompanies / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const rows = sortedCompanies.map((company) => ({
     id: company.id,
     name: company.name,
     fit: company.revEngineerFit,
     website: company.website ?? company.domain ?? "No website",
     description:
-      company.description?.slice(0, 140) ?? "No description captured yet.",
-    objectiveSignal:
-      company.objectiveSignal?.slice(0, 120) ?? "No objective signal yet.",
+      company.description?.slice(0, 140)
+      ?? company.webEvidence?.slice(0, 140)
+      ?? "No description captured yet.",
+    objectiveSignal: company.objectiveSignal?.slice(0, 120) ?? "No signal extracted from source row yet.",
     titleMatch: company.titleMatch ?? "No title match yet.",
     location: company.location ?? "Unknown",
-    daysActive: `${company.daysActive} days`,
+    daysActive: company.daysActive >= 0 ? `${company.daysActive} days` : "Unknown",
   }));
 
   if (companiesQuery.isError) {
     return (
       <EmptyState
         title="Companies could not be loaded"
-        description="The Company page now depends on the backend company aggregation endpoint. Start the backend and run at least one campaign import."
+        description="The Company page depends on the backend company aggregation endpoint. Start the backend and run at least one campaign import."
       />
     );
   }
@@ -107,7 +77,7 @@ export default function CompaniesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Companies"
-        description="Companies are your lead list. This page turns hiring evidence into usable prospect rows with website, role signal, expansion intent, and freshness."
+        description="Companies are your lead list. This page now stays lighter by loading one backend page at a time while keeping the strongest signal fields visible."
       />
 
       {companiesQuery.isLoading && companies.length === 0 ? (
@@ -118,7 +88,7 @@ export default function CompaniesPage() {
         <MetricCard
           label="Target companies"
           value={String(totalCompanies)}
-          change="Deduped from ingested scraper output"
+          change="Paged from backend company results"
           icon={Building2}
         />
         <MetricCard
@@ -126,13 +96,13 @@ export default function CompaniesPage() {
           value={String(
             companies.filter((company) => company.revEngineerFit.toLowerCase() === "high").length,
           )}
-          change="Best outreach candidates"
+          change="Best outreach candidates on this page"
           icon={ScanSearch}
         />
         <MetricCard
           label="Web evidence checked"
           value={`${companies.filter((company) => company.webEvidence).length}/${companies.length}`}
-          change="Backend-ingested evidence snippets"
+          change="Evidence snippets in the current page slice"
           icon={Globe2}
         />
       </section>
@@ -144,7 +114,7 @@ export default function CompaniesPage() {
               Lead Search
             </p>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight text-black">
-              Search by company, signal, website, or market
+              Search by company and fit
             </h2>
           </div>
           <div className="grid w-full gap-3 md:max-w-4xl md:grid-cols-4">
@@ -175,10 +145,7 @@ export default function CompaniesPage() {
             </select>
             <select
               value={sortBy}
-              onChange={(event) => {
-                setSortBy(event.target.value);
-                setPage(1);
-              }}
+              onChange={(event) => setSortBy(event.target.value)}
               className="rounded-full border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-black outline-none"
             >
               <option value="freshest">Sort: Freshest</option>
@@ -188,34 +155,19 @@ export default function CompaniesPage() {
           </div>
         </div>
         <div className="mt-4 flex flex-wrap gap-3">
-          <select
-            value={locationFilter}
-            onChange={(event) => {
-              setLocationFilter(event.target.value);
-              setPage(1);
-            }}
-            className="rounded-full border border-blue-100 bg-white px-4 py-3 text-sm text-black outline-none"
-          >
-            <option value="all">All locations</option>
-            {locationOptions.map((location) => (
-              <option key={location} value={location}>
-                {location}
-              </option>
-            ))}
-          </select>
           <p className="self-center text-sm text-black/60">
-            {filteredCompanies.length} matching lead{filteredCompanies.length === 1 ? "" : "s"}
+            {totalCompanies} matching lead{totalCompanies === 1 ? "" : "s"}
           </p>
         </div>
       </section>
 
-      {filteredCompanies.length === 0 && !companiesQuery.isLoading ? (
+      {totalCompanies === 0 && !companiesQuery.isLoading ? (
         <EmptyState
           title={companies.length === 0 ? "No companies have been aggregated yet" : "No leads match this search"}
           description={
             companies.length === 0
               ? "Run a campaign first so the backend can import jobs and group them into target companies."
-              : "Try a company name, location, or hire signal to narrow the list."
+              : "Try a company name or fit filter to narrow the list."
           }
         />
       ) : (
@@ -228,7 +180,8 @@ export default function CompaniesPage() {
               Lead signals from website, objective, title, location, and freshness
             </h2>
             <p className="max-w-4xl text-sm leading-7 text-black/70">
-              This is the company shortlist generated by the backend importer and objective signal layer.
+              This shortlist is streamed from the backend one page at a time so it stays responsive
+              as the dataset grows.
             </p>
           </div>
 
@@ -264,7 +217,7 @@ export default function CompaniesPage() {
           <PaginationControls
             page={currentPage}
             totalPages={totalPages}
-            totalItems={filteredCompanies.length}
+            totalItems={totalCompanies}
             pageSize={pageSize}
             itemLabel="leads"
             onPrevious={() => setPage((current) => Math.max(1, current - 1))}
@@ -275,4 +228,3 @@ export default function CompaniesPage() {
     </div>
   );
 }
-

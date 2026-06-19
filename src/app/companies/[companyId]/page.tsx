@@ -75,7 +75,7 @@ export default function CompanyDetailPage() {
         />
         <MetricCard
           label="Freshness window"
-          value={`${company.daysActive}d`}
+          value={company.daysActive >= 0 ? `${company.daysActive}d` : "Unknown"}
           change="Within active review period"
         />
       </section>
@@ -92,11 +92,11 @@ export default function CompanyDetailPage() {
                   Objective Match
                 </p>
                 <h2 className="mt-2 text-2xl font-semibold tracking-tight text-black">
-                  {company.objectiveSignal ?? "No objective signal yet."}
+                  {company.objectiveSignal ?? "No signal extracted from source row yet."}
                 </h2>
               </div>
               <p className="text-sm leading-7 text-black/70">
-                {company.description ?? "No company description was captured yet."}
+                {company.description ?? company.webEvidence ?? "No company description was captured yet."}
               </p>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-[1.3rem] border border-blue-100 bg-blue-50 p-4">

@@ -2,20 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, ShieldCheck, Waypoints } from "lucide-react";
 import { getSourceOverview, retestAllSources } from "@/lib/api/sources";
 import { DataTable } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { LoadingState } from "@/components/shared/loading-state";
-import { MetricCard } from "@/components/shared/metric-card";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { isActiveLaunchSource } from "@/lib/source-launch";
 import type { SourceOverview } from "@/lib/types/source";
-
-const VISIBLE_SUPPORT_TIERS = new Set([
-  "live_supported",
-  "fallback_supported",
-]);
 
 function getCoverageStatus(source: SourceOverview) {
   if (source.status === "running") {
@@ -57,10 +51,7 @@ export default function JobBoardsPage() {
         .filter(
           (source) =>
             source.clientVisible &&
-            (
-              source.status === "running" ||
-              (source.status === "ready" && VISIBLE_SUPPORT_TIERS.has(source.supportTier))
-            ),
+            (source.status === "running" || isActiveLaunchSource(source)),
         )
         .sort((left, right) => {
           const leftStatus = getCoverageStatus(left);
@@ -118,27 +109,6 @@ export default function JobBoardsPage() {
           {feedback}
         </div>
       ) : null}
-
-      <section className="grid gap-4 md:grid-cols-3">
-        <MetricCard
-          label="Visible source groups"
-          value={String(visibleSources.length)}
-          change="Source families that are ready or running now"
-          icon={Waypoints}
-        />
-        <MetricCard
-          label="Live supported"
-          value={String(visibleSources.filter((source) => source.supportTier === "live_supported").length)}
-          change="Recent live retests succeeded from this backend"
-          icon={ShieldCheck}
-        />
-        <MetricCard
-          label="Fallback supported"
-          value={String(visibleSources.filter((source) => source.supportTier === "fallback_supported").length)}
-          change="Historically proven and safe for controlled fallback"
-          icon={Activity}
-        />
-      </section>
 
       {coverageRows.length === 0 ? (
         <EmptyState

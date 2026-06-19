@@ -39,10 +39,11 @@ class Settings:
             relative_path = configured_db_url.removeprefix("sqlite:///./")
             configured_db_url = f"sqlite:///{(backend_root / relative_path).as_posix()}"
         self.db_url = configured_db_url
+        default_scraper_root = backend_root / "scraper"
         self.scraper_root = Path(
             os.getenv(
                 "HIRESIGNAL_SCRAPER_ROOT",
-                r"C:\Users\HP\Desktop\Basis VPS\Jobs scraper\Jobs scraper",
+                str(default_scraper_root),
             )
         )
         self.results_dir = self.scraper_root / "results"
@@ -58,10 +59,44 @@ class Settings:
         self.queue_poll_seconds = float(os.getenv("HIRESIGNAL_QUEUE_POLL_SECONDS", "2"))
         self.queue_retry_delay_seconds = int(os.getenv("HIRESIGNAL_QUEUE_RETRY_DELAY_SECONDS", "15"))
         self.queue_max_attempts = int(os.getenv("HIRESIGNAL_QUEUE_MAX_ATTEMPTS", "2"))
+        self.queue_stale_after_seconds = int(
+            os.getenv("HIRESIGNAL_QUEUE_STALE_AFTER_SECONDS", "180")
+        )
+        self.worker_heartbeat_seconds = int(
+            os.getenv("HIRESIGNAL_WORKER_HEARTBEAT_SECONDS", "15")
+        )
+        self.search_timeout_seconds = int(
+            os.getenv("HIRESIGNAL_SEARCH_TIMEOUT_SECONDS", "90")
+        )
+        self.ats_fetch_timeout_seconds = int(
+            os.getenv("HIRESIGNAL_ATS_FETCH_TIMEOUT_SECONDS", "12")
+        )
+        self.ats_max_candidate_slugs = int(
+            os.getenv("HIRESIGNAL_ATS_MAX_CANDIDATE_SLUGS", "25")
+        )
         self.redis_url = os.getenv("HIRESIGNAL_REDIS_URL", "redis://localhost:6379/0")
         self.celery_result_backend = os.getenv(
             "HIRESIGNAL_CELERY_RESULT_BACKEND", self.redis_url
         )
+        self.api_token = os.getenv("HIRESIGNAL_API_TOKEN", "").strip()
+        self.user_auth_enabled = os.getenv("HIRESIGNAL_USER_AUTH_ENABLED", "true").lower() == "true"
+        self.default_admin_name = os.getenv("HIRESIGNAL_DEFAULT_ADMIN_NAME", "HireSignal Admin").strip()
+        self.default_admin_email = os.getenv("HIRESIGNAL_DEFAULT_ADMIN_EMAIL", "admin@hiresignal.local").strip().lower()
+        self.default_admin_password = os.getenv("HIRESIGNAL_DEFAULT_ADMIN_PASSWORD", "HireSignal123!").strip()
+        self.session_hours = int(os.getenv("HIRESIGNAL_SESSION_HOURS", "24"))
+        self.artifact_backend = os.getenv("HIRESIGNAL_ARTIFACT_BACKEND", "database").strip().lower()
+        self.artifact_preserve_local_copy = os.getenv(
+            "HIRESIGNAL_ARTIFACT_PRESERVE_LOCAL_COPY", "true"
+        ).lower() == "true"
+        self.cleanup_temp_results = os.getenv(
+            "HIRESIGNAL_CLEANUP_TEMP_RESULTS", "true"
+        ).lower() == "true"
+        self.s3_bucket = os.getenv("HIRESIGNAL_S3_BUCKET", "").strip()
+        self.s3_region = os.getenv("HIRESIGNAL_S3_REGION", "").strip() or None
+        self.s3_endpoint_url = os.getenv("HIRESIGNAL_S3_ENDPOINT_URL", "").strip() or None
+        self.s3_access_key_id = os.getenv("HIRESIGNAL_S3_ACCESS_KEY_ID", "").strip() or None
+        self.s3_secret_access_key = os.getenv("HIRESIGNAL_S3_SECRET_ACCESS_KEY", "").strip() or None
+        self.s3_prefix = os.getenv("HIRESIGNAL_S3_PREFIX", "hiresignal-artifacts").strip().strip("/")
 
 
 settings = Settings()

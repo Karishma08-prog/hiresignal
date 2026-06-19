@@ -1,16 +1,51 @@
 import axios from "axios";
 
 function resolveBaseUrl() {
-  const base = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "http://localhost:8000";
+  if (typeof window !== "undefined") {
+    return "/api";
+  }
+
+  const configuredBase = (
+    process.env.HIRESIGNAL_INTERNAL_API_BASE_URL?.trim()
+    || process.env.NEXT_PUBLIC_API_BASE_URL?.trim()
+  );
+  const base = configuredBase && !configuredBase.includes("hiresignal.example.com")
+    ? configuredBase
+    : "http://127.0.0.1:8000";
   return base.endsWith("/api") ? base : `${base}/api`;
 }
 
+function resolveBearerToken() {
+  if (typeof window !== "undefined") {
+    return undefined;
+  }
+
+  const token = (
+    process.env.HIRESIGNAL_API_TOKEN?.trim()
+    || process.env.NEXT_PUBLIC_HIRESIGNAL_API_TOKEN?.trim()
+  );
+  return token ? `Bearer ${token}` : undefined;
+}
+
 export function resolveApiUrl(path: string) {
+  if (typeof window !== "undefined") {
+    return path.startsWith("/api/") ? path : `/api/${path.replace(/^\/+/, "")}`;
+  }
+
   return new URL(path, `${resolveBaseUrl()}/`).toString();
 }
 
 export const api = axios.create({
   baseURL: resolveBaseUrl(),
+});
+
+api.interceptors.request.use((config) => {
+  const token = resolveBearerToken();
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = token;
+  }
+  return config;
 });
 
 export interface ApiItemResponse<T> {

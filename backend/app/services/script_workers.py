@@ -178,9 +178,18 @@ class ScriptWorkerService:
             "-o",
             output_csv,
         ]
+        site_count = len([item for item in (payload.get("siteType") or []) if str(item).strip()])
+        results_wanted = int(payload.get("resultsWanted") or 0)
+        # Large multi-board searches can still be healthy while running well past
+        # the default 90s timeout, especially when a few slower boards are mixed in.
+        timeout = max(
+            45,
+            settings.search_timeout_seconds,
+            45 + (site_count * 15) + (min(max(results_wanted, 0), 50) * 2),
+        )
         return self._run_with_input(
             command,
             cwd=self.ever_jobs_root,
-            timeout=1200,
+            timeout=timeout,
             input_text=json.dumps(payload),
         )

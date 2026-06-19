@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -15,6 +15,33 @@ class TimestampMixin:
     )
 
 
+class User(Base, TimestampMixin):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str] = mapped_column(String, default="admin")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    sessions: Mapped[list["UserSession"]] = relationship(back_populates="user")
+
+
+class UserSession(Base, TimestampMixin):
+    __tablename__ = "user_sessions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    user: Mapped["User"] = relationship(back_populates="sessions")
+
+
 class Campaign(Base, TimestampMixin):
     __tablename__ = "campaigns"
 
@@ -25,7 +52,7 @@ class Campaign(Base, TimestampMixin):
     location: Mapped[str] = mapped_column(String, nullable=False)
     days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
     remote_only: Mapped[bool] = mapped_column(Boolean, default=False)
-    results_per_source: Mapped[int] = mapped_column(Integer, default=25)
+    results_per_source: Mapped[int] = mapped_column(Integer, default=100)
     status: Mapped[str] = mapped_column(String, default="draft")
     title_filter_config: Mapped[dict] = mapped_column(JSON, default=dict)
     objective_filter_config: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -260,6 +287,10 @@ class Artifact(Base):
     file_name: Mapped[str] = mapped_column(String, nullable=False)
     mime_type: Mapped[str] = mapped_column(String, nullable=False)
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    storage_backend: Mapped[str] = mapped_column(String, default="database")
+    byte_count: Mapped[int] = mapped_column(Integer, default=0)
+    checksum_sha1: Mapped[str | None] = mapped_column(String, nullable=True)
+    file_blob: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     report: Mapped["Report"] = relationship(back_populates="artifacts")
@@ -300,3 +331,14 @@ class QueueJob(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+
+
+class WorkerHeartbeat(Base):
+    __tablename__ = "worker_heartbeats"
+
+    worker_name: Mapped[str] = mapped_column(String, primary_key=True)
+    worker_mode: Mapped[str] = mapped_column(String, nullable=False)
+    process_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    host_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    details_json: Mapped[dict] = mapped_column(JSON, default=dict)

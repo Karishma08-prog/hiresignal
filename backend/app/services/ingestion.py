@@ -18,7 +18,14 @@ except Exception:
 
 from app import models
 from app.config import settings
+from app.services.leadership_strategy import (
+    campaign_title_variants,
+    company_keyword_score,
+    title_matches_campaign,
+)
+from app.services.ats_public_jobs import register_discovered_ats_rows
 from app.services.source_catalog import SOURCE_METADATA
+from app.services.storage import hydrate_artifact_record
 from app.services.source_registry import record_source_evidence, refresh_source_support
 from app.utils import make_id
 
@@ -95,11 +102,20 @@ def _title_case_site(site_key: str) -> str:
 
 def ensure_source(db: Session, site_key: str, *, engine_hint: str | None = None) -> models.Source:
     normalized = _normalize_site_key(site_key)
+    meta = SOURCE_METADATA.get(normalized, {})
     source = db.query(models.Source).filter(models.Source.site_key == normalized).first()
     if source is not None:
+        source.display_name = str(meta.get("display_name", source.display_name))
+        source.category = str(meta.get("category", source.category))
+        source.engine = str(meta.get("engine", engine_hint or source.engine))
+        source.region = str(meta.get("region", source.region))
+        source.requires_company_slug = bool(meta.get("requires_company_slug", source.requires_company_slug))
+        source.requires_api_key = bool(meta.get("needs_api_key", source.requires_api_key))
+        source.risk_level = str(meta.get("risk_level", source.risk_level))
+        source.notes = str(meta.get("notes", source.notes or "Imported from scraper output."))
+        db.flush()
         return source
 
-    meta = SOURCE_METADATA.get(normalized, {})
     source = models.Source(
         id=make_id("src"),
         site_key=normalized,
@@ -142,18 +158,29 @@ def ensure_source_health(db: Session, site_key: str) -> models.SourceHealth:
 def ensure_source_credential(db: Session, site_key: str) -> models.SourceCredential:
     normalized = _normalize_site_key(site_key)
     source = ensure_source(db, normalized)
+    meta = SOURCE_METADATA.get(normalized, {})
+    needs_api_key = bool(meta.get("needs_api_key", False))
+    needs_proxy = bool(meta.get("needs_proxy", False))
+    needs_company_slug = bool(meta.get("requires_company_slug", False))
     credential = (
         db.query(models.SourceCredential)
         .filter(models.SourceCredential.site_key == normalized)
         .first()
     )
     if credential is not None:
+        credential.needs_api_key = needs_api_key
+        credential.needs_proxy = needs_proxy
+        credential.needs_company_slug = needs_company_slug
+        credential.credential_present = (
+            (needs_api_key and bool(settings.scrappa_token))
+            or (needs_proxy and bool(settings.jobs_bota_proxy or settings.jobs_proxy))
+            or (not needs_api_key and not needs_proxy)
+        )
+        if credential.credential_present and credential.credential_verified_at is None:
+            credential.credential_verified_at = datetime.utcnow()
+        db.flush()
         return credential
 
-    meta = SOURCE_METADATA.get(normalized, {})
-    needs_api_key = bool(meta.get("needs_api_key", False))
-    needs_proxy = bool(meta.get("needs_proxy", False))
-    needs_company_slug = bool(meta.get("requires_company_slug", False))
     credential_present = (
         (needs_api_key and bool(settings.scrappa_token))
         or (needs_proxy and bool(settings.jobs_bota_proxy or settings.jobs_proxy))
@@ -190,7 +217,7 @@ def discover_output_files(
     before_snapshot: dict[str, float] | None = None,
     *,
     allow_fallback: bool = True,
-    limit: int = 8,
+    limit: int = 20,
 ) -> list[OutputFile]:
     results_dir = settings.results_dir
     if not results_dir.exists():
@@ -312,7 +339,42 @@ def _extract_domain(url: str | None) -> str | None:
 
 
 def _company_key(name: str) -> str:
-    return " ".join(name.lower().split())
+    normalized = re.sub(r"[^a-z0-9\s]", " ", name.lower())
+    normalized = re.sub(
+        r"\b(inc|incorporated|llc|ltd|limited|corp|corporation|company|co|plc|gmbh|pte|private)\b",
+        " ",
+        normalized,
+    )
+    return " ".join(normalized.split())
+
+
+def _normalize_title(value: str) -> str:
+    return " ".join(re.sub(r"[^a-z0-9\s]", " ", value.lower()).split())
+
+
+def _fallback_location_from_title(title: str | None) -> str | None:
+    raw = (title or "").strip()
+    if " - " not in raw:
+        return None
+
+    suffix = raw.rsplit(" - ", 1)[-1].strip()
+    if not suffix or len(suffix) > 80:
+        return None
+
+    lowered = suffix.lower()
+    looks_like_location = (
+        "," in suffix
+        or "remote" in lowered
+        or lowered in {"united states", "usa", "uk", "canada", "india"}
+    )
+    return suffix if looks_like_location else None
+
+
+def _row_location(raw: dict) -> str | None:
+    explicit = str(raw.get("location") or "").strip()
+    if explicit:
+        return explicit
+    return _fallback_location_from_title(str(raw.get("title") or "").strip())
 
 
 def _hash_job(site: str, job_url: str, title: str, company_name: str) -> str:
@@ -321,32 +383,133 @@ def _hash_job(site: str, job_url: str, title: str, company_name: str) -> str:
 
 
 def _campaign_title_terms(campaign: models.Campaign) -> list[str]:
-    title_config = campaign.title_filter_config or {}
-    configured_titles = [
-        str(item).strip().lower()
-        for item in title_config.get("includeTitles", [])
-        if str(item).strip()
-    ]
-    role_query = campaign.role_query or ""
-    query_parts = [
-        part.strip().lower()
-        for part in re.split(r"\bor\b", role_query, flags=re.IGNORECASE)
-        if part.strip()
-    ]
+    return campaign_title_variants(campaign)
 
-    ordered_terms: list[str] = []
-    seen: set[str] = set()
-    for term in [*configured_titles, *query_parts]:
-        if term and term not in seen:
-            seen.add(term)
-            ordered_terms.append(term)
-    return ordered_terms
+
+def _campaign_geo_profile(campaign: models.Campaign) -> dict[str, object]:
+    objective = campaign.objective_filter_config or {}
+    scope = " ".join(
+        str(value or "")
+        for value in [
+            campaign.country,
+            campaign.location,
+            objective.get("targetMarket"),
+            objective.get("objective"),
+            " ".join(str(item or "") for item in objective.get("signals", [])),
+        ]
+    ).lower()
+    if (
+        "united states" in scope
+        or "north america" in scope
+        or re.search(r"\busa\b", scope)
+        or re.search(r"\bus\b", scope)
+    ):
+        return {
+            "key": "us",
+            "include": {
+                "united states",
+                "usa",
+                "u.s.",
+                "north america",
+                "new york",
+                "san francisco",
+                "california",
+                "texas",
+                "seattle",
+                "boston",
+                "austin",
+                "chicago",
+            },
+            "exclude": {
+                "india",
+                "bangalore",
+                "bengaluru",
+                "gurgaon",
+                "mumbai",
+                "hyderabad",
+                "pune",
+                "delhi",
+                "singapore",
+            },
+        }
+    if re.search(r"\bindia\b", scope) or re.search(r"\bindian\b", scope):
+        return {
+            "key": "india",
+            "include": {
+                "india",
+                "bengaluru",
+                "bangalore",
+                "gurgaon",
+                "mumbai",
+                "hyderabad",
+                "pune",
+                "delhi",
+                "remote india",
+            },
+            "exclude": {
+                "united states",
+                "usa",
+                "north america",
+                "canada",
+                "singapore",
+            },
+        }
+    if re.search(r"\bapac\b", scope):
+        return {
+            "key": "apac",
+            "include": {
+                "singapore",
+                "hong kong",
+                "manila",
+                "jakarta",
+                "tokyo",
+                "ho chi minh",
+                "vietnam",
+                "philippines",
+                "indonesia",
+                "japan",
+                "apac",
+            },
+            "exclude": {
+                "united states",
+                "usa",
+                "north america",
+                "canada",
+            },
+        }
+    return {"key": "generic", "include": set(), "exclude": set()}
+
+
+def _location_matches_campaign(
+    *,
+    location: str | None,
+    description: str | None,
+    campaign: models.Campaign,
+    is_remote: bool,
+) -> bool:
+    profile = _campaign_geo_profile(campaign)
+    include_terms = profile["include"]
+    exclude_terms = profile["exclude"]
+    haystack = " ".join(str(item or "") for item in [location, description]).lower()
+
+    if any(term in haystack for term in exclude_terms):
+        return False
+
+    if not include_terms:
+        return True
+
+    if any(term in haystack for term in include_terms):
+        return True
+
+    normalized_location = (location or "").strip().lower()
+    if is_remote and "remote" in normalized_location:
+        return True
+
+    return False
 
 
 def _matched_title(job_title: str, campaign: models.Campaign) -> bool:
-    title = (job_title or "").lower()
-    terms = _campaign_title_terms(campaign)
-    return any(term in title for term in terms) if terms else False
+    return title_matches_campaign(job_title, campaign)
 
 
 def _objective_signals(description: str, campaign: models.Campaign) -> list[str]:
@@ -358,21 +521,50 @@ def _objective_signals(description: str, campaign: models.Campaign) -> list[str]
         if str(item).strip()
     ]
     signals = configured or [
-        "us market",
-        "united states",
-        "north america",
-        "us customers",
-        "expand into us",
+        "new budget",
+        "erp rollout",
+        "reorg",
+        "fundraising",
+        "priority role",
+        "active hiring",
+        "multiple openings",
+        "regional expansion",
     ]
     return [signal for signal in signals if signal.lower() in text]
 
-
-def _classify_fit(matched_title: bool, matched_objective: bool) -> tuple[str, str]:
-    if matched_title and matched_objective:
+def _classify_fit(score: int) -> tuple[str, str]:
+    if score >= 11:
         return "high", "high"
-    if matched_title or matched_objective:
+    if score >= 6:
         return "medium", "medium"
     return "low", "low"
+
+
+def _compute_company_score(
+    *,
+    signal_count: int,
+    title_match_count: int,
+    open_roles: int,
+    source_count: int,
+    min_days_active: int | None,
+    geo_match: bool,
+    niche_keyword_score: int,
+) -> int:
+    score = signal_count * 3
+    if title_match_count:
+        score += 3
+    score += min(open_roles, 4)
+    if source_count > 1:
+        score += 1
+    if min_days_active is not None:
+        if min_days_active <= 7:
+            score += 3
+        elif min_days_active <= 30:
+            score += 1
+    if geo_match:
+        score += 2
+    score += min(niche_keyword_score, 4) * 2
+    return score
 
 
 def _copy_artifact(path: Path, run_id: str) -> Path:
@@ -396,8 +588,37 @@ def _copy_artifact(path: Path, run_id: str) -> Path:
     return destination
 
 
+def _register_artifact(
+    *,
+    db: Session,
+    report_id: str,
+    artifact_path: Path,
+    kind: str,
+    mime_type: str,
+) -> models.Artifact:
+    artifact = models.Artifact(
+        id=make_id("art"),
+        report_id=report_id,
+        kind=kind,
+        file_name=artifact_path.name,
+        mime_type=mime_type,
+        file_path="pending",
+        storage_backend="database",
+        byte_count=0,
+        checksum_sha1=None,
+        file_blob=None,
+    )
+    db.add(artifact)
+    db.flush()
+    hydrate_artifact_record(artifact, artifact_path)
+    db.flush()
+    return artifact
+
+
 def output_file_matches_campaign(path: Path, campaign: models.Campaign, *, sample_limit: int = 250) -> bool:
-    if not _campaign_title_terms(campaign):
+    enforce_titles = bool(_campaign_title_terms(campaign))
+    enforce_geo = _campaign_geo_profile(campaign)["key"] != "generic"
+    if not enforce_titles and not enforce_geo:
         return True
 
     suffix = path.suffix.lower()
@@ -408,7 +629,14 @@ def output_file_matches_campaign(path: Path, campaign: models.Campaign, *, sampl
                 for index, row in enumerate(reader):
                     if index >= sample_limit:
                         break
-                    if _matched_title(str(row.get("title") or ""), campaign):
+                    title_ok = (not enforce_titles) or _matched_title(str(row.get("title") or ""), campaign)
+                    geo_ok = (not enforce_geo) or _location_matches_campaign(
+                        location=str(row.get("location") or ""),
+                        description=str(row.get("description") or ""),
+                        campaign=campaign,
+                        is_remote=_parse_bool(row.get("isRemote")),
+                    )
+                    if title_ok and geo_ok:
                         return True
         except Exception:
             return False
@@ -418,7 +646,14 @@ def output_file_matches_campaign(path: Path, campaign: models.Campaign, *, sampl
         rows = _load_us_target_shortlist(path)
         for row in rows[:sample_limit]:
             sample_title = str(row.get("sampleTitle") or row.get("titleMatch") or "")
-            if _matched_title(sample_title, campaign):
+            title_ok = (not enforce_titles) or _matched_title(sample_title, campaign)
+            geo_ok = (not enforce_geo) or _location_matches_campaign(
+                location=str(row.get("location") or row.get("market") or ""),
+                description=str(row.get("webEvidence") or row.get("evidence") or ""),
+                campaign=campaign,
+                is_remote=False,
+            )
+            if title_ok and geo_ok:
                 return True
         return False
 
@@ -456,11 +691,33 @@ def _load_us_target_shortlist(path: Path) -> list[dict[str, str]]:
 
 def _generate_shortlist_artifact(db: Session, company_ids: list[str], run_id: str) -> Path:
     path = settings.artifacts_dir / f"{run_id}-company-shortlist.csv"
-    companies = (
-        db.query(models.Company)
-        .filter(models.Company.id.in_(company_ids))
-        .order_by(models.Company.name.asc())
+    score_rows = (
+        db.query(models.CompanySignal)
+        .filter(
+            models.CompanySignal.campaign_run_id == run_id,
+            models.CompanySignal.company_id.in_(company_ids),
+        )
+        .order_by(models.CompanySignal.objective_score.desc(), models.CompanySignal.created_at.asc())
         .all()
+    )
+    score_map: dict[str, models.CompanySignal] = {}
+    ordered_company_ids: list[str] = []
+    for row in score_rows:
+        if row.company_id not in score_map:
+            score_map[row.company_id] = row
+            ordered_company_ids.append(row.company_id)
+
+    company_map = {
+        company.id: company
+        for company in db.query(models.Company)
+        .filter(models.Company.id.in_(company_ids))
+        .all()
+    }
+    companies = [company_map[company_id] for company_id in ordered_company_ids if company_id in company_map]
+    companies.extend(
+        company
+        for company_id, company in sorted(company_map.items(), key=lambda item: item[1].name.lower())
+        if company_id not in ordered_company_ids
     )
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
@@ -473,10 +730,12 @@ def _generate_shortlist_artifact(db: Session, company_ids: list[str], run_id: st
                 "open_roles",
                 "priority",
                 "fit",
+                "objective_score",
                 "source",
             ]
         )
         for company in companies:
+            signal = score_map.get(company.id)
             writer.writerow(
                 [
                     company.name,
@@ -486,6 +745,7 @@ def _generate_shortlist_artifact(db: Session, company_ids: list[str], run_id: st
                     company.open_roles,
                     company.priority,
                     company.revengineer_fit,
+                    signal.objective_score if signal else 0,
                     company.source or "",
                 ]
             )
@@ -520,6 +780,9 @@ def ingest_campaign_outputs(
                 ats_rows.extend(list(reader))
         elif output.kind == "xlsx":
             shortlist_rows.extend(_load_us_target_shortlist(output.path))
+
+    if ats_rows:
+        register_discovered_ats_rows(db, ats_rows)
 
     normalized_allowed_sources = {
         _normalize_site_key(item)
@@ -561,6 +824,41 @@ def ingest_campaign_outputs(
             best_job_rows[normalized_hash] = raw
 
     job_rows = list(best_job_rows.values())
+    semantic_best_rows: dict[str, dict] = {}
+    for raw in job_rows:
+        company_name = (raw.get("companyName") or "").strip() or "Unknown company"
+        title = (raw.get("title") or "").strip() or "Untitled role"
+        location = (raw.get("location") or "").strip()
+        semantic_key = "|".join(
+            [
+                _company_key(company_name),
+                _normalize_title(title),
+                "remote" if _parse_bool(raw.get("isRemote")) else _normalize_title(location),
+                _safe_date(raw.get("datePosted")) or "",
+            ]
+        )
+        existing = semantic_best_rows.get(semantic_key)
+        if existing is None:
+            semantic_best_rows[semantic_key] = raw
+            continue
+        current_score = len((raw.get("description") or "").strip()) + (20 if _matched_title(title, campaign) else 0)
+        existing_score = len((existing.get("description") or "").strip()) + (
+            20 if _matched_title(str(existing.get("title") or ""), campaign) else 0
+        )
+        if current_score >= existing_score:
+            semantic_best_rows[semantic_key] = raw
+
+    job_rows = list(semantic_best_rows.values())
+    job_rows = [
+        row
+        for row in job_rows
+        if _location_matches_campaign(
+            location=str(row.get("location") or ""),
+            description=str(row.get("description") or ""),
+            campaign=campaign,
+            is_remote=_parse_bool(row.get("isRemote")),
+        )
+    ]
     if restrict_to_campaign_title_match and _campaign_title_terms(campaign):
         job_rows = [row for row in job_rows if _matched_title(str(row.get("title") or ""), campaign)]
 
@@ -574,6 +872,9 @@ def ingest_campaign_outputs(
             "days_active": [],
             "signals": [],
             "title_matches": [],
+            "geo_matches": [],
+            "niche_scores": [],
+            "niche_keywords": [],
         }
     )
     created_jobs: list[models.Job] = []
@@ -605,7 +906,7 @@ def ingest_campaign_outputs(
                     website=None,
                     domain=_extract_domain(job_url),
                     industry=None,
-                    location=(raw.get("location") or "").strip() or None,
+                    location=_row_location(raw),
                     description=(raw.get("description") or "").strip() or None,
                     open_roles=0,
                     status="active",
@@ -613,7 +914,7 @@ def ingest_campaign_outputs(
                     priority="medium",
                     objective_signal=None,
                     title_match=None,
-                    days_active=0,
+                    days_active=-1,
                     source=source.display_name,
                     web_evidence=None,
                     web_sources=[],
@@ -625,8 +926,14 @@ def ingest_campaign_outputs(
         matched_title = _matched_title(title, campaign)
         matched_signals = _objective_signals(raw.get("description") or "", campaign)
         matched_objective = bool(matched_signals)
-        fit, priority = _classify_fit(matched_title, matched_objective)
-
+        niche_score, niche_keywords = company_keyword_score(
+            campaign,
+            company_name=company_name,
+            description=(raw.get("description") or "").strip() or None,
+            title=title,
+            domain=_extract_domain(job_url),
+            location=_row_location(raw),
+        )
         job = models.Job(
             id=make_id("job"),
             campaign_run_id=run.id,
@@ -637,7 +944,7 @@ def ingest_campaign_outputs(
             job_url=job_url,
             title=title,
             company_name=company_name,
-            location=(raw.get("location") or "").strip() or None,
+            location=_row_location(raw),
             date_posted=_safe_date(raw.get("datePosted")),
             job_type=(raw.get("jobType") or "").strip() or None,
             is_remote=_parse_bool(raw.get("isRemote")),
@@ -671,11 +978,21 @@ def ingest_campaign_outputs(
             metrics["signals"].extend(matched_signals)
         if matched_title:
             metrics["title_matches"].append(title)
+        if niche_score:
+            metrics["niche_scores"].append(niche_score)
+        if niche_keywords:
+            metrics["niche_keywords"].extend(niche_keywords)
+        metrics["geo_matches"].append(
+            _location_matches_campaign(
+                location=job.location,
+                description=job.description,
+                campaign=campaign,
+                is_remote=job.is_remote,
+            )
+        )
 
         company.open_roles = int(company.open_roles or 0) + 1
         company.source = source.display_name if not company.source else company.source
-        company.revengineer_fit = fit if fit == "high" or company.revengineer_fit != "high" else company.revengineer_fit
-        company.priority = priority if priority == "high" or company.priority != "high" else company.priority
         if matched_title and not company.title_match:
             company.title_match = title
         if matched_signals and not company.objective_signal:
@@ -702,17 +1019,36 @@ def ingest_campaign_outputs(
             company.days_active = min(metrics["days_active"])
         signals = list(dict.fromkeys(str(item) for item in metrics["signals"]))
         title_matches = list(dict.fromkeys(str(item) for item in metrics["title_matches"]))
-        fit, priority = _classify_fit(bool(title_matches), bool(signals))
+        niche_keywords = list(dict.fromkeys(str(item) for item in metrics["niche_keywords"]))
+        niche_score = max((int(item) for item in metrics["niche_scores"]), default=0)
+        score = _compute_company_score(
+            signal_count=len(signals),
+            title_match_count=len(title_matches),
+            open_roles=int(metrics["jobs"]),
+            source_count=len(set(str(item) for item in metrics["sources"])),
+            min_days_active=min(metrics["days_active"]) if metrics["days_active"] else None,
+            geo_match=any(bool(item) for item in metrics["geo_matches"]),
+            niche_keyword_score=niche_score,
+        )
+        fit, priority = _classify_fit(score)
         company.revengineer_fit = fit
         company.priority = priority
         company.title_match = company.title_match or (title_matches[0] if title_matches else None)
         company.objective_signal = company.objective_signal or (
-            ", ".join(signals[:3]) if signals else None
+            ", ".join(signals[:3]) if signals else ", ".join(niche_keywords[:3]) if niche_keywords else None
         )
         company.web_evidence = company.web_evidence or (
-            company.description[:400] if company.description else company.objective_signal
+            company.description[:400]
+            if company.description
+            else company.objective_signal
+            or (
+                f"Imported from {company.source or 'source'} via title match: "
+                f"{company.title_match}{f' in {company.location}' if company.location else ''}."
+                if company.title_match
+                else None
+            )
         )
-        if signals:
+        if signals or niche_score:
             matched_company_count += 1
 
         db.add(
@@ -720,11 +1056,11 @@ def ingest_campaign_outputs(
                 id=make_id("sig"),
                 company_id=company.id,
                 campaign_run_id=run.id,
-                objective_score=min(10, 4 + len(signals) * 2 + (2 if title_matches else 0)),
+                objective_score=score,
                 objective_classification=(
-                    "likely" if signals else "possible" if title_matches else "unlikely"
+                    "likely" if score >= 11 else "possible" if score >= 6 else "unlikely"
                 ),
-                matched_signals=signals,
+                matched_signals=signals or niche_keywords[:3],
                 evidence_snippet=company.web_evidence,
             )
         )
@@ -802,15 +1138,13 @@ def ingest_campaign_outputs(
     for artifact_path in artifact_paths:
         kind = artifact_path.suffix.lower().lstrip(".") or "file"
         mime_type = "text/csv" if kind == "csv" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        artifact = models.Artifact(
-            id=make_id("art"),
+        artifact = _register_artifact(
+            db=db,
             report_id=summary_report.id,
+            artifact_path=artifact_path,
             kind=kind,
-            file_name=artifact_path.name,
             mime_type=mime_type,
-            file_path=str(artifact_path),
         )
-        db.add(artifact)
         artifact_records.append(artifact)
 
     if company_ids:
@@ -832,15 +1166,12 @@ def ingest_campaign_outputs(
         db.flush()
 
         shortlist_artifact_path = settings.artifacts_dir / f"{run.id}-company-shortlist.csv"
-        db.add(
-            models.Artifact(
-                id=make_id("art"),
-                report_id=shortlist_report.id,
-                kind="csv",
-                file_name=shortlist_artifact_path.name,
-                mime_type="text/csv",
-                file_path=str(shortlist_artifact_path),
-            )
+        _register_artifact(
+            db=db,
+            report_id=shortlist_report.id,
+            artifact_path=shortlist_artifact_path,
+            kind="csv",
+            mime_type="text/csv",
         )
 
     for site_key, jobs_found in per_site_counts.items():
@@ -893,6 +1224,8 @@ def ingest_campaign_outputs(
             credential.credential_present = credential.credential_present or bool(settings.scrappa_token)
             if credential.credential_present:
                 credential.credential_verified_at = datetime.utcnow()
+            if source := db.query(models.Source).filter(models.Source.site_key == site_key).first():
+                source.requires_company_slug = True
             record_source_evidence(
                 db,
                 site_key=site_key,

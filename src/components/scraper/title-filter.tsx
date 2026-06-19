@@ -1,9 +1,14 @@
-﻿"use client";
+"use client";
+
+import type { RolePack } from "@/lib/scraper-defaults";
 
 type TitleFilterProps = {
+  rolePacks: RolePack[];
+  selectedRolePack: string;
   titleGroups: string[];
   selectedTitles: string[];
   includeKeywords: string[];
+  onRolePackChange: (packKey: string) => void;
   onToggleTitle: (title: string) => void;
   onSelectAllTitles: () => void;
   onClearTitles: () => void;
@@ -11,9 +16,12 @@ type TitleFilterProps = {
 };
 
 export function TitleFilter({
+  rolePacks,
+  selectedRolePack,
   titleGroups,
   selectedTitles,
   includeKeywords,
+  onRolePackChange,
   onToggleTitle,
   onSelectAllTitles,
   onClearTitles,
@@ -58,6 +66,33 @@ export function TitleFilter({
             Clear
           </button>
         </div>
+      </div>
+
+      <div className="mb-5 space-y-3 rounded-[1.5rem] border border-blue-100 bg-white p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-black/60">
+          Role Pack
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {rolePacks.map((pack) => (
+            <button
+              type="button"
+              key={pack.key}
+              onClick={() => onRolePackChange(pack.key)}
+              aria-pressed={selectedRolePack === pack.key}
+              className={[
+                "rounded-full border px-3 py-2 text-xs font-semibold transition",
+                selectedRolePack === pack.key
+                  ? "border-[var(--brand-blue)] bg-blue-50 text-black"
+                  : "border-blue-100 bg-white text-black/70 hover:border-black",
+              ].join(" ")}
+            >
+              {pack.title}
+            </button>
+          ))}
+        </div>
+        <p className="text-sm leading-7 text-black/60">
+          {rolePacks.find((pack) => pack.key === selectedRolePack)?.description}
+        </p>
       </div>
 
       <div className="space-y-3">
@@ -110,4 +145,3 @@ export function TitleFilter({
     </section>
   );
 }
-

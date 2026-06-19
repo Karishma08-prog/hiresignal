@@ -1,7 +1,8 @@
-﻿"use client";
+"use client";
 
 import { Bell, Search, Sparkles } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { LogoutButton } from "@/components/auth/logout-button";
 
 const labels: Record<string, string> = {
   "/": "Home",
@@ -51,9 +52,9 @@ export function AppHeader() {
             <Sparkles className="h-4 w-4" />
             New Insight
           </button>
+          <LogoutButton />
         </div>
       </div>
     </header>
   );
 }
-

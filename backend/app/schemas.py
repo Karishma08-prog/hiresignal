@@ -18,6 +18,28 @@ class PaginatedResponse(BaseModel):
     totalPages: int
 
 
+class UserRead(OrmModel):
+    id: str
+    name: str
+    email: str
+    role: str
+    isActive: bool = Field(alias="is_active")
+    lastLoginAt: datetime | None = Field(alias="last_login_at")
+    createdAt: datetime = Field(alias="created_at")
+    updatedAt: datetime = Field(alias="updated_at")
+
+
+class AuthLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AuthLoginResponse(BaseModel):
+    user: UserRead
+    token: str
+    expiresAt: datetime
+
+
 class CampaignCreate(BaseModel):
     name: str
     roleQuery: str
@@ -25,7 +47,7 @@ class CampaignCreate(BaseModel):
     location: str
     days: int = 30
     remoteOnly: bool = False
-    resultsPerSource: int = 25
+    resultsPerSource: int = 100
     titleFilterConfig: dict = Field(default_factory=dict)
     objectiveFilterConfig: dict = Field(default_factory=dict)
     sourceConfig: dict = Field(default_factory=dict)
@@ -38,7 +60,7 @@ class CampaignPresetLaunch(BaseModel):
     location: str
     days: int = 30
     remoteOnly: bool = False
-    resultsPerSource: int = 25
+    resultsPerSource: int = 100
     titleFilterConfig: dict = Field(default_factory=dict)
     objectiveFilterConfig: dict = Field(default_factory=dict)
     triggeredBy: str = "frontend_preset"

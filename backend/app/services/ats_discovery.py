@@ -18,6 +18,8 @@ def _gl_code(country: str) -> str:
         "CANADA": "ca",
         "AUSTRALIA": "au",
         "GERMANY": "de",
+        "GLOBAL": "us",
+        "WORLD": "us",
     }
     return mapping.get(normalized, "us")
 

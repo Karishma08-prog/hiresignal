@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from datetime import datetime
 from pathlib import Path
 
@@ -7,6 +8,11 @@ from app import models
 from app.config import settings
 from app.database import SessionLocal
 from app.services.ats_discovery import run_generic_ats_discovery
+from app.services.ats_public_jobs import (
+    fetch_public_ats_board_jobs,
+    register_discovered_ats_rows,
+    write_public_ats_csv,
+)
 from app.services.ingestion import (
     OutputFile,
     _csv_has_ats_schema,
@@ -18,7 +24,13 @@ from app.services.ingestion import (
     output_file_matches_campaign,
     snapshot_results,
 )
+from app.services.leadership_strategy import (
+    build_search_batches,
+    preferred_ats_boards_for_campaign,
+    preferred_search_boards_for_campaign,
+)
 from app.services.script_workers import ScriptWorkerService
+from app.services.storage import materialize_artifact_to_path
 from app.services.source_runtime import get_preferred_live_search_boards
 from app.utils import make_id
 
@@ -31,7 +43,7 @@ def _log_run(
     *,
     source_key: str | None = None,
     details: dict | None = None,
-) -> None:
+    ) -> None:
     db.add(
         models.RunLog(
             id=make_id("log"),
@@ -42,6 +54,26 @@ def _log_run(
             details_json=details or {},
         )
     )
+
+
+def _log_run_and_commit(
+    db,
+    run_id: str,
+    level: str,
+    message: str,
+    *,
+    source_key: str | None = None,
+    details: dict | None = None,
+) -> None:
+    _log_run(
+        db,
+        run_id,
+        level,
+        message,
+        source_key=source_key,
+        details=details,
+    )
+    db.commit()
 
 
 def _mark_source_failure(db, site_key: str, error: str) -> None:
@@ -166,6 +198,8 @@ def _campaign_boards(campaign: models.Campaign) -> tuple[list[str], list[str], l
     search_boards = [str(item).strip() for item in config.get("searchBoards", []) if str(item).strip()]
     browser_boards = [str(item).strip() for item in config.get("browserBoards", []) if str(item).strip()]
     ats_boards = [str(item).strip() for item in config.get("atsBoards", []) if str(item).strip()]
+    search_boards = preferred_search_boards_for_campaign(campaign, search_boards)
+    ats_boards = preferred_ats_boards_for_campaign(campaign, ats_boards)
     return search_boards, browser_boards, ats_boards
 
 
@@ -180,6 +214,39 @@ def _selected_source_keys(campaign: models.Campaign) -> set[str]:
 
 def _campaign_search_term(campaign: models.Campaign) -> str:
     return campaign.role_query.strip() or campaign.name.strip() or "marketing"
+
+
+def _normalized_live_location(location: str | None) -> str:
+    normalized = (location or "").strip().lower()
+    if normalized in {"entire world", "worldwide", "global", "remote worldwide", "anywhere"}:
+        return ""
+    return (location or "").strip()
+
+
+def _cleanup_temp_run_files(run_id: str) -> list[str]:
+    removed: list[str] = []
+    if not settings.cleanup_temp_results:
+        return removed
+
+    candidate_dirs = [
+        settings.results_dir,
+        settings.data_dir,
+    ]
+
+    for base_dir in candidate_dirs:
+        if not base_dir.exists():
+            continue
+        for path in base_dir.iterdir():
+            if not path.is_file():
+                continue
+            if not path.name.startswith(f"{run_id}-"):
+                continue
+            try:
+                path.unlink(missing_ok=True)
+                removed.append(str(path))
+            except Exception:
+                continue
+    return removed
 
 
 def _is_strict_live_campaign(campaign: models.Campaign) -> bool:
@@ -239,8 +306,12 @@ def _historical_output_fallbacks(
                 .all()
             )
             for artifact in artifacts:
-                path = Path(artifact.file_path)
-                if not path.exists():
+                try:
+                    path = materialize_artifact_to_path(
+                        artifact,
+                        settings.data_dir / "materialized_artifacts",
+                    )
+                except FileNotFoundError:
                     continue
                 if str(path) in seen_paths:
                     continue
@@ -325,49 +396,83 @@ def _generic_live_outputs(
     search_term = _campaign_search_term(campaign)
 
     if search_boards:
-        search_csv = settings.results_dir / f"{run.id}-search.csv"
-        payload = {
-            "searchTerm": search_term,
-            "country": campaign.country,
-            "location": campaign.location,
-            "hoursOld": _hours_old(campaign.days),
-            "resultsWanted": campaign.results_per_source,
-            "isRemote": campaign.remote_only,
-            "siteType": search_boards,
-            "linkedinFetchDescription": True,
-            "proxies": [settings.jobs_proxy] if settings.jobs_proxy else None,
-        }
-        result = worker.run_ever_jobs_search(payload, str(search_csv))
-        search_ok = result.exit_code == 0 and search_csv.exists() and search_csv.stat().st_size > 0
-        _log_run(
+        live_location = _normalized_live_location(campaign.location)
+        search_batches = build_search_batches(campaign, search_boards)
+        _log_run_and_commit(
             db,
             run.id,
-            "info" if search_ok else "error",
-            "Executed generic ever-jobs search.",
+            "info",
+            "Prepared leadership-aware search batches.",
             source_key="generic_search",
             details={
-                "exitCode": result.exit_code,
-                "boards": search_boards,
-                "outputCsv": str(search_csv),
-                "stderr": result.stderr[:800],
+                "requestedBoards": search_boards,
+                "batches": [
+                    {"label": batch.label, "query": batch.query, "boards": batch.boards}
+                    for batch in search_batches
+                ],
             },
         )
-        for board in search_boards:
-            _record_batch_result(
-                source_summary,
-                board,
-                0 if search_ok else max(result.exit_code, 1),
-                result.stderr or "Search completed without producing a usable output file.",
+        for index, batch in enumerate(search_batches, start=1):
+            search_csv = settings.results_dir / f"{run.id}-search-{index}.csv"
+            payload = {
+                "searchTerm": batch.query,
+                "country": campaign.country,
+                "location": live_location,
+                "hoursOld": _hours_old(campaign.days),
+                "resultsWanted": campaign.results_per_source,
+                "isRemote": campaign.remote_only,
+                "siteType": batch.boards,
+                "linkedinFetchDescription": True,
+                "proxies": [settings.jobs_proxy] if settings.jobs_proxy else None,
+            }
+            _log_run_and_commit(
+                db,
+                run.id,
+                "info",
+                "Starting generic ever-jobs search batch.",
+                source_key="generic_search",
+                details={
+                    "batchLabel": batch.label,
+                    "query": batch.query,
+                    "boards": batch.boards,
+                    "outputCsv": str(search_csv),
+                    "timeoutSec": settings.search_timeout_seconds,
+                },
             )
-        if search_ok:
-            outputs.append(OutputFile(path=search_csv, kind="csv"))
+            result = worker.run_ever_jobs_search(payload, str(search_csv))
+            search_ok = result.exit_code == 0 and search_csv.exists() and search_csv.stat().st_size > 0
+            _log_run(
+                db,
+                run.id,
+                "info" if search_ok else "error",
+                "Executed generic ever-jobs search batch.",
+                source_key="generic_search",
+                details={
+                    "batchLabel": batch.label,
+                    "query": batch.query,
+                    "exitCode": result.exit_code,
+                    "boards": batch.boards,
+                    "outputCsv": str(search_csv),
+                    "stderr": result.stderr[:800],
+                },
+            )
+            for board in batch.boards:
+                _record_batch_result(
+                    source_summary,
+                    board,
+                    0 if search_ok else max(result.exit_code, 1),
+                    result.stderr or "Search completed without producing a usable output file.",
+                )
+            if search_ok:
+                outputs.append(OutputFile(path=search_csv, kind="csv"))
 
     if browser_boards:
         bota_csv = settings.results_dir / f"{run.id}-browser.csv"
+        live_location = _normalized_live_location(campaign.location)
         config = {
             "searchTerm": search_term,
             "country": campaign.country,
-            "location": campaign.location,
+            "location": live_location,
             "days": campaign.days,
             "resultsWanted": campaign.results_per_source,
             "sites": browser_boards,
@@ -376,6 +481,18 @@ def _generic_live_outputs(
             "headless": True,
             "budgetSec": max(90, 45 + (len(browser_boards) * 45)),
         }
+        _log_run_and_commit(
+            db,
+            run.id,
+            "info",
+            "Starting browser-backed scrape.",
+            source_key="generic_browser",
+            details={
+                "boards": browser_boards,
+                "outputCsv": str(bota_csv),
+                "budgetSec": config["budgetSec"],
+            },
+        )
         result = worker.run_bota_scraper(config)
         browser_ok = result.exit_code == 0 and bota_csv.exists() and bota_csv.stat().st_size > 0
         _log_run(
@@ -424,57 +541,179 @@ def _generic_live_outputs(
                     outputs[-1] = OutputFile(path=enriched_csv, kind="csv")
 
     if ats_boards:
-        if settings.scrappa_token:
+        public_ats_rows: list[dict] = []
+        public_ats_errors: dict[str, str] = {}
+        ats_public_counts: dict[str, int] = {}
+        unresolved_ats_boards = list(ats_boards)
+        discovery_count = 0
+        _log_run_and_commit(
+            db,
+            run.id,
+            "info",
+            "Starting ATS collection.",
+            source_key="ats_discovery",
+            details={"boards": ats_boards, "paidDiscoveryEnabled": bool(settings.scrappa_token)},
+        )
+
+        _log_run(
+            db,
+            run.id,
+            "info",
+            "Attempting public ATS fetchers from the slug registry first.",
+            source_key="ats_discovery",
+            details={"boards": ats_boards},
+        )
+        db.commit()
+        for board in ats_boards:
+            _log_run_and_commit(
+                db,
+                run.id,
+                "info",
+                f"Starting public ATS fetch for {board}.",
+                source_key=board,
+                details={
+                    "siteKey": board,
+                    "resultsWanted": campaign.results_per_source,
+                },
+            )
+            rows, fetch_error = fetch_public_ats_board_jobs(
+                db,
+                site_key=board,
+                campaign=campaign,
+                limit=campaign.results_per_source,
+            )
+            if rows:
+                public_ats_rows.extend(rows)
+                ats_public_counts[board] = len(rows)
+                _log_run_and_commit(
+                    db,
+                    run.id,
+                    "info",
+                    f"Completed public ATS fetch for {board}.",
+                    source_key=board,
+                    details={
+                        "siteKey": board,
+                        "jobsFound": len(rows),
+                    },
+                )
+            elif fetch_error:
+                public_ats_errors[board] = fetch_error
+                _log_run_and_commit(
+                    db,
+                    run.id,
+                    "warning",
+                    f"Public ATS fetch for {board} returned no usable jobs.",
+                    source_key=board,
+                    details={
+                        "siteKey": board,
+                        "error": fetch_error,
+                    },
+                )
+
+        unresolved_ats_boards = [board for board in ats_boards if ats_public_counts.get(board, 0) <= 0]
+
+        if settings.scrappa_token and unresolved_ats_boards:
             ats_csv = settings.results_dir / f"{run.id}-ats.csv"
-            count = run_generic_ats_discovery(
+            discovery_count = run_generic_ats_discovery(
                 token=settings.scrappa_token,
                 role_query=search_term,
                 country=campaign.country,
-                location=campaign.location,
-                ats_boards=ats_boards,
+                location=_normalized_live_location(campaign.location),
+                ats_boards=unresolved_ats_boards,
                 output_csv=ats_csv,
             )
             _log_run(
                 db,
                 run.id,
                 "info",
-                "Executed generic ATS discovery.",
+                "Executed generic ATS discovery for unresolved boards.",
                 source_key="ats_discovery",
                 details={
-                    "boards": ats_boards,
+                    "boards": unresolved_ats_boards,
                     "outputCsv": str(ats_csv),
-                    "rows": count,
+                    "rows": discovery_count,
                 },
             )
-            for board in ats_boards:
-                source_summary.append(
-                    {
-                        "siteKey": board,
-                        "status": "completed" if count else "failed",
-                        "jobsFound": 0,
-                        "durationMs": None,
-                        "error": None if count else "No ATS discovery rows were found.",
-                    }
-                )
             if ats_csv.exists():
                 outputs.append(OutputFile(path=ats_csv, kind="csv", source_key="ats_discovery"))
-        else:
-            for board in ats_boards:
-                source_summary.append(
-                    {
-                        "siteKey": board,
-                        "status": "failed",
-                        "jobsFound": 0,
-                        "durationMs": None,
-                        "error": "SCRAPPA_TOKEN is not configured for ATS discovery.",
-                    }
-                )
-            _log_run(
-                db,
-                run.id,
-                "warning",
-                "Skipped ATS discovery because SCRAPPA_TOKEN is not configured.",
-                source_key="ats_discovery",
+                try:
+                    with ats_csv.open("r", encoding="utf-8", errors="ignore", newline="") as handle:
+                        register_discovered_ats_rows(db, list(csv.DictReader(handle)))
+                except Exception:
+                    pass
+                for board in unresolved_ats_boards:
+                    _log_run_and_commit(
+                        db,
+                        run.id,
+                        "info",
+                        f"Retrying public ATS fetch for {board} after ATS discovery.",
+                        source_key=board,
+                        details={"siteKey": board},
+                    )
+                    rows, fetch_error = fetch_public_ats_board_jobs(
+                        db,
+                        site_key=board,
+                        campaign=campaign,
+                        limit=campaign.results_per_source,
+                    )
+                    if rows:
+                        public_ats_rows.extend(rows)
+                        ats_public_counts[board] = len(rows)
+                        public_ats_errors.pop(board, None)
+                        _log_run_and_commit(
+                            db,
+                            run.id,
+                            "info",
+                            f"Completed post-discovery ATS fetch for {board}.",
+                            source_key=board,
+                            details={
+                                "siteKey": board,
+                                "jobsFound": len(rows),
+                            },
+                        )
+                    elif fetch_error:
+                        public_ats_errors[board] = fetch_error
+                        _log_run_and_commit(
+                            db,
+                            run.id,
+                            "warning",
+                            f"Post-discovery ATS fetch for {board} still returned no usable jobs.",
+                            source_key=board,
+                            details={
+                                "siteKey": board,
+                                "error": fetch_error,
+                            },
+                        )
+
+        if public_ats_rows:
+            public_ats_csv = settings.results_dir / f"{run.id}-ats-public.csv"
+            write_public_ats_csv(public_ats_csv, public_ats_rows)
+            outputs.append(OutputFile(path=public_ats_csv, kind="csv"))
+
+        if not ats_public_counts:
+            for row in public_ats_rows:
+                site_key = str(row.get("site") or "").strip().lower()
+                ats_public_counts[site_key] = ats_public_counts.get(site_key, 0) + 1
+
+        for board in ats_boards:
+            jobs_found = ats_public_counts.get(board, 0)
+            discovery_found = discovery_count if settings.scrappa_token else 0
+            has_any_signal = jobs_found > 0 or discovery_found > 0
+            source_summary.append(
+                {
+                    "siteKey": board,
+                    "status": "completed" if has_any_signal else "failed",
+                    "jobsFound": jobs_found,
+                    "durationMs": None,
+                    "error": None if has_any_signal else public_ats_errors.get(
+                        board,
+                        (
+                            "No ATS discovery rows were found."
+                            if settings.scrappa_token
+                            else "No verified ATS slugs or public ATS jobs were available for this family."
+                        ),
+                    ),
+                }
             )
 
     return outputs
@@ -504,7 +743,7 @@ def _search_rescue_outputs(
     payload = {
         "searchTerm": _campaign_search_term(campaign),
         "country": campaign.country,
-        "location": campaign.location,
+        "location": _normalized_live_location(campaign.location),
         "hoursOld": _hours_old(campaign.days),
         "resultsWanted": campaign.results_per_source,
         "isRemote": campaign.remote_only,
@@ -512,6 +751,18 @@ def _search_rescue_outputs(
         "linkedinFetchDescription": True,
         "proxies": [settings.jobs_proxy] if settings.jobs_proxy else None,
     }
+    _log_run_and_commit(
+        db,
+        run.id,
+        "warning",
+        "Starting healthy-source rescue search.",
+        source_key="search_rescue",
+        details={
+            "boards": rescue_candidates,
+            "outputCsv": str(rescue_csv),
+            "timeoutSec": settings.search_timeout_seconds,
+        },
+    )
     result = worker.run_ever_jobs_search(payload, str(rescue_csv))
     rescue_ok = result.exit_code == 0 and rescue_csv.exists() and rescue_csv.stat().st_size > 0
     _log_run(
@@ -573,6 +824,7 @@ def execute_campaign_run(campaign_id: str, run_id: str) -> None:
             "Campaign run started.",
             details={"campaignName": campaign.name, "country": campaign.country},
         )
+        db.commit()
 
         if settings.enable_script_execution and worker.root.exists():
             fresh_outputs = _generic_live_outputs(db, campaign, run, worker, source_summary)
@@ -692,17 +944,6 @@ def execute_campaign_run(campaign_id: str, run_id: str) -> None:
 
         if strict_live_mode:
             output_files = list(fresh_outputs)
-            if not output_files:
-                output_files = _historical_output_fallbacks(db, campaign, run.id)
-                if output_files:
-                    used_historical_output_fallback = True
-                    _log_run(
-                        db,
-                        run.id,
-                        "warning",
-                        "Live run produced no fresh output files, so the backend reused the latest successful historical artifacts for this source.",
-                        details={"files": [str(output.path) for output in output_files]},
-                    )
         else:
             output_files = fresh_outputs or discover_output_files(
                 campaign,
@@ -740,35 +981,6 @@ def execute_campaign_run(campaign_id: str, run_id: str) -> None:
                     else "fresh_live_import" if run_mode == "fresh_live" else "historical_import"
                 ),
             )
-            if (
-                strict_live_mode
-                and not used_historical_output_fallback
-                and int(summary["job_count"]) == 0
-                and _summary_has_source_failures(summary)
-            ):
-                fallback_outputs = _historical_output_fallbacks(db, campaign, run.id)
-                if fallback_outputs:
-                    used_historical_output_fallback = True
-                    output_files = fallback_outputs
-                    _log_run(
-                        db,
-                        run.id,
-                        "warning",
-                        "Fresh live output contained no importable jobs, so the backend reused the latest successful historical artifacts for this source.",
-                        details={"files": [str(output.path) for output in fallback_outputs]},
-                    )
-                    summary = ingest_campaign_outputs(
-                        db,
-                        campaign,
-                        run,
-                        fallback_outputs,
-                        _completed_fallback_summary(fallback_outputs),
-                        ingestion_mode="historical_import",
-                        restrict_to_campaign_title_match=True,
-                        mark_empty_results_as_failed=True,
-                        allowed_source_keys=_selected_source_keys(campaign),
-                        source_evidence_type="fallback_import",
-                    )
         elif strict_live_mode:
             _log_run(
                 db,
@@ -782,10 +994,10 @@ def execute_campaign_run(campaign_id: str, run_id: str) -> None:
             _log_run(
                 db,
                 run.id,
-                "warning",
-                "No output files found; using demo fallback.",
+                "error",
+                "No output files were produced for this run.",
             )
-            summary = _seed_demo_run(db, campaign, run)
+            summary = _empty_run_summary(source_summary)
 
         for item in summary["source_summary"]:
             if item.get("status") == "failed":
@@ -817,10 +1029,8 @@ def execute_campaign_run(campaign_id: str, run_id: str) -> None:
                 run_mode = "live_attempt_failed"
             else:
                 run_mode = "fresh_live" if fresh_outputs else "historical_import"
-        elif strict_live_mode:
-            run_mode = "live_attempt_failed"
         else:
-            run_mode = "demo_fallback"
+            run_mode = "live_attempt_failed"
 
         run.status = (
             "failed"
@@ -844,8 +1054,6 @@ def execute_campaign_run(campaign_id: str, run_id: str) -> None:
                 f"[{run_mode}] Live scrape did not produce campaign-relevant rows. "
                 "Check source logs, credentials, and whether historical fallback artifacts match the current role intent."
             )
-        elif run_mode == "demo_fallback":
-            run.run_notes = f"[{run_mode}] No real output files were available, so a placeholder record was created."
         elif used_historical_output_fallback:
             run.run_notes = (
                 f"[{run_mode}] Live scrape returned no fresh files, so the backend reused the latest "
@@ -862,6 +1070,15 @@ def execute_campaign_run(campaign_id: str, run_id: str) -> None:
         campaign.last_run_id = run.id
 
         db.commit()
+        removed_temp_files = _cleanup_temp_run_files(run.id)
+        if removed_temp_files:
+            _log_run_and_commit(
+                db,
+                run.id,
+                "info",
+                "Cleaned up temporary run output files after database persistence.",
+                details={"removedFiles": removed_temp_files},
+            )
     except Exception:
         run = db.get(models.CampaignRun, run_id)
         campaign = db.get(models.Campaign, campaign_id)

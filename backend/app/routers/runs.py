@@ -11,6 +11,10 @@ from app.utils import paginate, serialize_model
 router = APIRouter(prefix="/campaign-runs", tags=["campaign-runs"])
 
 
+def _is_demo_fallback_run(db: Session, run: models.CampaignRun) -> bool:
+    return _infer_run_mode(db, run) == "demo_fallback"
+
+
 def _infer_run_mode(db: Session, run: models.CampaignRun) -> str:
     notes = (run.run_notes or "").strip().lower()
     if notes.startswith("[fresh_live]"):
@@ -53,12 +57,15 @@ def list_runs(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, alias="pageSize", ge=1, le=100),
     campaign_id: str | None = Query(default=None, alias="campaignId"),
+    include_demo: bool = Query(default=False, alias="includeDemo"),
     db: Session = Depends(get_db),
 ):
     query = db.query(models.CampaignRun)
     if campaign_id:
         query = query.filter(models.CampaignRun.campaign_id == campaign_id)
     runs = query.order_by(models.CampaignRun.started_at.desc(), models.CampaignRun.id.desc()).all()
+    if not include_demo:
+        runs = [run for run in runs if not _is_demo_fallback_run(db, run)]
     items = [_serialize_run(db, run) for run in runs]
     return paginate(items, page, page_size)
 

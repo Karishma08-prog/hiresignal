@@ -78,6 +78,8 @@ export async function getRunCompanies(runId: string) {
 export async function getRunJobs(runId: string) {
   return fetchAllPages<{
     id: string;
+    campaignRunId: string;
+    companyId?: string | null;
     title: string;
     companyName: string;
     location?: string | null;

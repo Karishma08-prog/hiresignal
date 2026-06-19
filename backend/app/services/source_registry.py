@@ -5,6 +5,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app import models
+from app.services.source_catalog import APPROVED_SOURCE_KEYS
 from app.services.ats_discovery import _slug_and_type
 from app.utils import make_id
 
@@ -33,20 +34,74 @@ GENERIC_SLUGS = {
     "apply",
 }
 
-
 def derive_support_tier(
     source: models.Source,
     health: models.SourceHealth | None,
     credential: models.SourceCredential | None,
+    *,
+    verified_slug_count: int = 0,
+    recent_success_evidence: int = 0,
+    recent_failure_evidence: int = 0,
 ) -> tuple[str, str]:
     working_status = credential.working_status if credential else "unknown"
     last_jobs_found = int(health.last_run_jobs_found or 0) if health else 0
+    success_rate = float(health.success_rate_7d or 0) if health else 0
+    recent_success = bool(health and health.last_success_at)
+    currently_failed = bool(health and health.status == "failed")
+    has_verified_slugs = verified_slug_count > 0
+    site_key = (source.site_key or "").strip().lower()
+    approved_source = site_key in APPROVED_SOURCE_KEYS
+    recent_live_like_success = recent_success_evidence > 0 or last_jobs_found > 0 or success_rate >= 50
 
-    if working_status in WORKING_STATUSES and health and health.status == "ready":
+    if (
+        working_status in WORKING_STATUSES
+        and health
+        and health.status == "ready"
+        and recent_live_like_success
+        and (
+            approved_source
+            or (source.category == "ats" and has_verified_slugs and recent_success_evidence > 0)
+        )
+    ):
         return "live_supported", "Recent live retest succeeded for this source."
 
-    if working_status in PROVEN_STATUSES or last_jobs_found > 0:
+    if not approved_source and source.category != "ats":
+        return (
+            "experimental",
+            "This source is outside the approved accuracy pack, so it is not exposed for trusted live launches yet.",
+        )
+
+    if currently_failed and recent_success_evidence <= 0 and last_jobs_found <= 0:
+        return (
+            "experimental",
+            "Current runtime health is failing, so this source is temporarily removed from the trusted launch pack.",
+        )
+
+    if (
+        working_status in PROVEN_STATUSES
+        or last_jobs_found > 0
+        or recent_success
+        or has_verified_slugs
+        or recent_success_evidence > 0
+    ):
+        if source.category == "ats" and not has_verified_slugs and recent_success_evidence <= 0:
+            return "experimental", "This ATS family still needs stronger verified slug evidence before trusted use."
+        if (
+            source.category == "ats"
+            and has_verified_slugs
+            and working_status in PROVEN_STATUSES
+            and last_jobs_found > 0
+        ):
+            return (
+                "fallback_supported",
+                "This ATS family has verified slug evidence and prior successful imports in this backend environment.",
+            )
+        if recent_failure_evidence > recent_success_evidence and recent_success_evidence == 0:
+            return "experimental", "Recent runtime evidence is weak, so this source needs another successful validation run."
         return "fallback_supported", "This source has proven historical evidence in this backend environment."
+
+    if source.requires_company_slug and not has_verified_slugs:
+        return "experimental", "This ATS family needs verified company slugs before it can be used reliably."
 
     if credential and (
         credential.credential_present
@@ -99,10 +154,42 @@ def refresh_source_support(
 
     source = source or ensure_source(db, site_key)
     support = ensure_source_support(db, source.site_key)
-    tier, reason = derive_support_tier(source, health, credential)
+    verified_slug_count = 0
+    recent_success_evidence = 0
+    recent_failure_evidence = 0
+    if source.requires_company_slug:
+        verified_slug_count = (
+            db.query(models.SourceSlug)
+            .filter(
+                models.SourceSlug.site_key == source.site_key,
+                models.SourceSlug.status.in_(["verified", "working"]),
+            )
+            .count()
+        )
+    recent_evidence = (
+        db.query(models.SourceEvidence)
+        .filter(models.SourceEvidence.site_key == source.site_key)
+        .order_by(models.SourceEvidence.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    recent_success_evidence = sum(
+        1 for row in recent_evidence if row.succeeded and int(row.jobs_found or 0) > 0
+    )
+    recent_failure_evidence = sum(
+        1 for row in recent_evidence if not row.succeeded
+    )
+    tier, reason = derive_support_tier(
+        source,
+        health,
+        credential,
+        verified_slug_count=verified_slug_count,
+        recent_success_evidence=recent_success_evidence,
+        recent_failure_evidence=recent_failure_evidence,
+    )
     support.support_tier = tier
     support.support_reason = reason
-    support.client_visible = tier != "disabled"
+    support.client_visible = tier in {"live_supported", "fallback_supported"} or source.site_key in APPROVED_SOURCE_KEYS
     support.last_policy_review_at = support.last_policy_review_at or datetime.utcnow()
     return support
 
@@ -187,3 +274,98 @@ def discover_source_slugs_from_jobs(db: Session, site_key: str) -> list[models.S
 
     db.flush()
     return list(discovered.values())
+
+
+def upsert_source_slug(
+    db: Session,
+    *,
+    site_key: str,
+    company_slug: str,
+    company_name: str | None = None,
+    job_board_url: str | None = None,
+    discovery_method: str = "unknown",
+    status: str = "discovered",
+    notes: str | None = None,
+) -> models.SourceSlug | None:
+    from app.services.ingestion import ensure_source
+
+    source = ensure_source(db, site_key)
+    normalized_slug = (company_slug or "").strip().lower()
+    if not normalized_slug or normalized_slug in GENERIC_SLUGS:
+        return None
+
+    existing = (
+        db.query(models.SourceSlug)
+        .filter(
+            models.SourceSlug.site_key == source.site_key,
+            models.SourceSlug.company_slug == normalized_slug,
+        )
+        .first()
+    )
+    if existing is None:
+        existing = models.SourceSlug(
+            id=make_id("srcslug"),
+            site_key=source.site_key,
+            company_slug=normalized_slug,
+        )
+        db.add(existing)
+
+    existing.company_name = company_name or existing.company_name
+    existing.job_board_url = job_board_url or existing.job_board_url
+    existing.discovery_method = discovery_method or existing.discovery_method
+    existing.last_discovered_at = datetime.utcnow()
+    existing.notes = notes or existing.notes
+
+    if status in {"verified", "working"}:
+        existing.status = "verified"
+        existing.last_verified_at = datetime.utcnow()
+        existing.last_error = None
+    elif not existing.status or existing.status == "discovered":
+        existing.status = status
+
+    db.flush()
+    return existing
+
+
+def list_source_slugs_for_fetch(
+    db: Session,
+    site_key: str,
+    *,
+    limit: int = 25,
+) -> list[models.SourceSlug]:
+    return (
+        db.query(models.SourceSlug)
+        .filter(
+            models.SourceSlug.site_key == site_key.strip().lower(),
+            models.SourceSlug.status.in_(["verified", "working", "discovered"]),
+        )
+        .order_by(
+            models.SourceSlug.last_verified_at.desc(),
+            models.SourceSlug.last_discovered_at.desc(),
+            models.SourceSlug.updated_at.desc(),
+        )
+        .limit(limit)
+        .all()
+    )
+
+
+def list_all_source_slugs_for_fetch(
+    db: Session,
+    site_key: str,
+    *,
+    limit: int = 100,
+) -> list[models.SourceSlug]:
+    return (
+        db.query(models.SourceSlug)
+        .filter(
+            models.SourceSlug.site_key == site_key.strip().lower(),
+            models.SourceSlug.status.in_(["verified", "working", "discovered"]),
+        )
+        .order_by(
+            models.SourceSlug.last_verified_at.desc(),
+            models.SourceSlug.last_discovered_at.desc(),
+            models.SourceSlug.updated_at.desc(),
+        )
+        .limit(limit)
+        .all()
+    )

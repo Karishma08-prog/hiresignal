@@ -6,7 +6,11 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.config import settings
-from app.services.source_catalog import FREE_ZERO_CONFIG_BOARDS
+from app.services.source_catalog import (
+    APPROVED_BROWSER_SOURCE_KEYS,
+    APPROVED_SEARCH_SOURCE_KEYS,
+    FREE_ZERO_CONFIG_BOARDS,
+)
 
 WORKING_SOURCE_STATUSES = {
     "working",
@@ -92,6 +96,8 @@ def get_preferred_live_search_boards(
             continue
         if site_key in excluded:
             continue
+        if site_key not in APPROVED_SEARCH_SOURCE_KEYS and site_key not in APPROVED_BROWSER_SOURCE_KEYS:
+            continue
         if not credential_is_ready(source, credential):
             continue
 
@@ -99,6 +105,10 @@ def get_preferred_live_search_boards(
         proven = has_proven_source_success(health, credential)
         recent = is_recent_source_success(health)
         working = credential.working_status == "working" if credential else False
+        degraded = bool(
+            (health and health.status == "failed")
+            or (credential and credential.working_status == "failing_or_unreliable")
+        )
         preferred_risk = 0 if source.risk_level == "core" else 1
         jobs_rank = -(int(health.last_run_jobs_found) if health else 0)
         recent_rank = 0 if recent else 1
@@ -111,15 +121,11 @@ def get_preferred_live_search_boards(
             support_rank = 1
         rank = (support_rank, working_rank, recent_rank, proven_rank, preferred_risk, jobs_rank, source.display_name.lower())
 
-        if (
-            (support and support.support_tier in {"live_supported", "fallback_supported"})
-            or proven
-            or recent
-            or working
-            or (health and health.status == "ready")
-        ):
+        if degraded:
+            fallback.append(site_key)
+        elif support and support.support_tier in {"live_supported", "fallback_supported"}:
             ranked.append((rank, site_key))
-        else:
+        elif support and support.support_tier == "experimental":
             fallback.append(site_key)
 
     ranked.sort(key=lambda item: item[0])
@@ -133,4 +139,4 @@ def get_preferred_live_search_boards(
         if ordered_allowed:
             return ordered_allowed[:limit]
 
-    return fallback[:limit]
+    return []

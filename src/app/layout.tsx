@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Space_Grotesk } from "next/font/google";
-import { AppHeader } from "@/components/layout/app-header";
-import { AppSidebar } from "@/components/layout/app-sidebar";
+import { AppShell } from "@/components/layout/app-shell";
 import { QueryProvider } from "@/components/providers/query-provider";
 import "./globals.css";
 
@@ -33,15 +32,7 @@ export default function RootLayout({
     >
       <body className="min-h-full">
         <QueryProvider>
-          <div className="min-h-screen bg-white text-black">
-            <div className="flex min-h-screen">
-              <AppSidebar />
-              <div className="flex min-h-screen flex-1 flex-col">
-                <AppHeader />
-                <main className="flex-1 px-4 py-5 sm:px-6 lg:px-8">{children}</main>
-              </div>
-            </div>
-          </div>
+          <AppShell>{children}</AppShell>
         </QueryProvider>
       </body>
     </html>

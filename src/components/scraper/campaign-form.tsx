@@ -1,199 +1,169 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
+import axios from "axios";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
+import { TagEditor } from "@/components/scraper/tag-editor";
 import {
   createCampaign,
   getCampaignRun,
-  getCampaigns,
-  launchFreeZeroConfigCampaign,
   triggerCampaignRun,
 } from "@/lib/api/campaigns";
 import { getSourceOverview } from "@/lib/api/sources";
 import {
-  getSuggestedRunnableSources,
+  formatSourceLabel,
+  getAllRunnableSourceConfig,
   inferCountry,
-  isLaunchableSource,
-  resolveSourceRuntime,
+  inferSourceLaunchMode,
 } from "@/lib/source-launch";
-import { sourcePresetOptions } from "@/lib/scraper-defaults";
+import { LOCATION_OPTIONS } from "@/lib/location-options";
+import type { SourceOverview } from "@/lib/types/source";
 
 const campaignSchema = z.object({
   campaignName: z.string().min(2, "Campaign name is required."),
   primaryKeyword: z.string().min(2, "Keyword is required."),
-  sourcePreset: z.string().min(2, "Preset is required."),
-  source: z.string().min(2, "Source is required."),
   location: z.string().min(2, "Location is required."),
   days: z.number().min(1, "Days must be at least 1.").max(90, "Days must be 90 or less."),
-  resultsPerSource: z.number()
-    .min(1, "Results per source must be at least 1.")
-    .max(200, "Results per source must be 200 or less."),
+  sourceSelection: z.string().min(1, "Source is required."),
 });
 
 type CampaignFormValues = z.infer<typeof campaignSchema>;
 
 type CampaignFormProps = {
   selectedTitles: string[];
-  includeKeywords: string[];
+  onTitlesChange: (values: string[]) => void;
   objectiveMode: string;
   objectiveText: string;
   objectiveSignals: string[];
   targetMarket: string;
+  defaultQuery: string;
 };
+
+const DEFAULT_RESULTS_LIMIT = 100;
+
 export function CampaignForm({
   selectedTitles,
-  includeKeywords,
+  onTitlesChange,
   objectiveMode,
   objectiveText,
   objectiveSignals,
   targetMarket,
+  defaultQuery,
 }: CampaignFormProps) {
   const queryClient = useQueryClient();
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string>("");
 
-  const campaignsQuery = useQuery({
-    queryKey: ["campaigns"],
-    queryFn: () => getCampaigns(),
-  });
+  function getMutationErrorMessage() {
+    if (!createAndRunMutation.error) {
+      return "";
+    }
+
+    if (axios.isAxiosError(createAndRunMutation.error)) {
+      const detail = createAndRunMutation.error.response?.data?.detail;
+      if (typeof detail === "string" && detail.trim()) {
+        return detail;
+      }
+      if (Array.isArray(detail) && detail.length > 0) {
+        return detail
+          .map((item) => item?.msg)
+          .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+          .join(" ");
+      }
+      if (createAndRunMutation.error.message) {
+        return createAndRunMutation.error.message;
+      }
+    }
+
+    return "Campaign launch failed. Please try again.";
+  }
   const sourcesQuery = useQuery({
     queryKey: ["source-overview"],
     queryFn: getSourceOverview,
   });
 
-  const campaignOptions = (campaignsQuery.data ?? []).map((campaign) => ({
-    id: campaign.id,
-    name: campaign.name,
-    primaryKeyword: campaign.roleQuery,
-    source:
-      campaign.sourceConfig.searchBoards?.[0] ??
-      campaign.sourceConfig.browserBoards?.[0] ??
-      campaign.sourceConfig.atsBoards?.[0] ??
-      "linkedin",
-    location: campaign.location,
-    days: campaign.days,
-    resultsPerSource: campaign.resultsPerSource,
-  }));
-  const campaignNameOptions = Array.from(
-    new Map(campaignOptions.map((campaign) => [campaign.name, campaign])).values(),
-  );
+  const locationOptions = LOCATION_OPTIONS;
 
-  const primaryKeywordOptions = Array.from(
-    new Set(campaignOptions.map((campaign) => campaign.primaryKeyword)),
-  );
-  const locationOptions = Array.from(new Set(campaignOptions.map((campaign) => campaign.location)));
-
-  const sourceMap = useMemo(() => {
-    return new Map((sourcesQuery.data ?? []).map((source) => [source.siteKey, source] as const));
-  }, [sourcesQuery.data]);
-
-  const sourceOptions = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...(sourcesQuery.data ?? [])
-            .filter(
-              (source) =>
-                isLaunchableSource(source) &&
-                resolveSourceRuntime(
-                  source.siteKey,
-                  new Map([[source.siteKey, source]]),
-                ).isRunnable,
-            )
-            .map((source) => source.siteKey),
-          ...(campaignsQuery.data ?? []).flatMap((campaign) => [
-            ...(campaign.sourceConfig.searchBoards ?? []),
-            ...(campaign.sourceConfig.browserBoards ?? []),
-            ...(campaign.sourceConfig.atsBoards ?? []),
-          ]),
-        ]),
-      )
-        .filter((source) => {
-          const known = sourceMap.get(source);
-          return !known || resolveSourceRuntime(source, sourceMap).isRunnable;
-        })
-        .sort((left, right) => left.localeCompare(right)),
-    [campaignsQuery.data, sourceMap, sourcesQuery.data],
-  );
-
-  const suggestedSources = useMemo(
-    () => getSuggestedRunnableSources(sourcesQuery.data ?? [], 4),
+  const allSourceConfig = useMemo(
+    () => getAllRunnableSourceConfig(sourcesQuery.data ?? []),
     [sourcesQuery.data],
   );
-  const preferredRunnableSource = suggestedSources[0]?.siteKey ?? sourceOptions[0] ?? "linkedin";
+  const allRunnableSources = useMemo(
+    () =>
+      [
+        ...allSourceConfig.searchBoards,
+        ...allSourceConfig.browserBoards,
+        ...allSourceConfig.atsBoards,
+      ].sort((left, right) => left.localeCompare(right)),
+    [allSourceConfig],
+  );
+  const sourceMap = useMemo(
+    () => new Map((sourcesQuery.data ?? []).map((source) => [source.siteKey.toLowerCase(), source])),
+    [sourcesQuery.data],
+  );
 
   const {
     register,
     handleSubmit,
     control,
-    getValues,
     setValue,
     formState: { errors },
   } = useForm<CampaignFormValues>({
     resolver: zodResolver(campaignSchema),
     defaultValues: {
-      campaignName: campaignOptions[0]?.name ?? "",
-      primaryKeyword: campaignOptions[0]?.primaryKeyword ?? "",
-      sourcePreset: "single_source",
-      source: campaignOptions[0]?.source ?? sourcesQuery.data?.[0]?.siteKey ?? "linkedin",
-      location: campaignOptions[0]?.location ?? "India",
-      days: campaignOptions[0]?.days ?? 30,
-      resultsPerSource: campaignOptions[0]?.resultsPerSource ?? 25,
+      campaignName: "",
+      primaryKeyword: defaultQuery,
+      location: "Entire world",
+      days: 30,
+      sourceSelection: "all",
     },
   });
 
-  const selectedCampaignName = useWatch({ control, name: "campaignName" });
-  const selectedSourcePreset = useWatch({ control, name: "sourcePreset" });
-  const selectedSource = useWatch({ control, name: "source" });
-  const selectedSourceRuntime = useMemo(
-    () => resolveSourceRuntime(selectedSource ?? "", sourceMap),
-    [selectedSource, sourceMap],
+  const selectedSourceValue = useWatch({ control, name: "sourceSelection" });
+  const hasObjectiveSignals = objectiveSignals.length > 0;
+  const hasSelectedTitles = selectedTitles.length > 0;
+  const selectedSource = useMemo(() => {
+    if (!selectedSourceValue || selectedSourceValue === "all") {
+      return null;
+    }
+    return sourceMap.get(selectedSourceValue.toLowerCase()) ?? null;
+  }, [selectedSourceValue, sourceMap]);
+  const sourceConfig = useMemo(() => {
+    if (!selectedSource) {
+      return allSourceConfig;
+    }
+
+    const sourceKey = selectedSource.siteKey.toLowerCase();
+    const launchMode = inferSourceLaunchMode(selectedSource as SourceOverview);
+    if (launchMode === "ats") {
+      return { searchBoards: [], browserBoards: [], atsBoards: [sourceKey] };
+    }
+    if (launchMode === "browser") {
+      return { searchBoards: [], browserBoards: [sourceKey], atsBoards: [] };
+    }
+    return { searchBoards: [sourceKey], browserBoards: [], atsBoards: [] };
+  }, [allSourceConfig, selectedSource]);
+  const activeSourceKeys = useMemo(() => {
+    if (!selectedSource) {
+      return allRunnableSources;
+    }
+    return [selectedSource.siteKey.toLowerCase()];
+  }, [allRunnableSources, selectedSource]);
+  const hasRunnableSources = activeSourceKeys.length > 0;
+  const sourceOptions = useMemo(
+    () => [
+      { value: "all", label: "All runnable sources" },
+      ...allRunnableSources.map((sourceKey) => ({
+        value: sourceKey,
+        label: formatSourceLabel(sourceKey),
+      })),
+    ],
+    [allRunnableSources],
   );
-
-  useEffect(() => {
-    const currentName = getValues("campaignName");
-    if (currentName || !campaignOptions.length) {
-      return;
-    }
-
-    const fallbackCampaign = campaignOptions[0];
-    setValue("campaignName", fallbackCampaign.name, { shouldValidate: true });
-    setValue("primaryKeyword", fallbackCampaign.primaryKeyword, { shouldValidate: true });
-    setValue("source", fallbackCampaign.source, { shouldValidate: true });
-    setValue("location", fallbackCampaign.location, { shouldValidate: true });
-    setValue("days", fallbackCampaign.days ?? 30, { shouldValidate: true });
-    setValue("resultsPerSource", fallbackCampaign.resultsPerSource ?? 25, {
-      shouldValidate: true,
-    });
-  }, [campaignOptions, getValues, setValue]);
-
-  useEffect(() => {
-    const currentSource = getValues("source");
-    if (selectedSourcePreset === "free_zero_config") {
-      return;
-    }
-    if (!currentSource || !resolveSourceRuntime(currentSource, sourceMap).isRunnable) {
-      setValue("source", preferredRunnableSource, { shouldValidate: true });
-    }
-  }, [getValues, preferredRunnableSource, selectedSourcePreset, setValue, sourceMap]);
-
-  useEffect(() => {
-    const selectedCampaign = campaignOptions.find(
-      (campaign) => campaign.name === selectedCampaignName,
-    );
-    if (!selectedCampaign) {
-      return;
-    }
-    setValue("primaryKeyword", selectedCampaign.primaryKeyword, { shouldValidate: true });
-    setValue("source", selectedCampaign.source, { shouldValidate: true });
-    setValue("location", selectedCampaign.location, { shouldValidate: true });
-    setValue("days", selectedCampaign.days ?? 30, { shouldValidate: true });
-    setValue("resultsPerSource", selectedCampaign.resultsPerSource ?? 25, { shouldValidate: true });
-  }, [campaignOptions, selectedCampaignName, setValue]);
 
   const runStatusQuery = useQuery({
     queryKey: ["campaign-run", activeRunId],
@@ -207,31 +177,6 @@ export function CampaignForm({
 
   const createAndRunMutation = useMutation({
     mutationFn: async (values: CampaignFormValues) => {
-      if (values.sourcePreset === "free_zero_config") {
-        return launchFreeZeroConfigCampaign({
-          name: values.campaignName,
-          roleQuery: values.primaryKeyword,
-          country: inferCountry(values.location),
-          location: values.location,
-          days: values.days,
-          remoteOnly: false,
-          resultsPerSource: values.resultsPerSource,
-          titleFilterConfig: {
-            includeTitles: selectedTitles,
-            includeKeywords,
-          },
-          objectiveFilterConfig: {
-            objective: objectiveText,
-            targetMarket,
-            signals: objectiveSignals,
-            mode: objectiveMode,
-          },
-          triggeredBy: "frontend_free_zero_config",
-        });
-      }
-
-      const sourceRuntime = resolveSourceRuntime(values.source, sourceMap);
-
       const created = await createCampaign({
         name: values.campaignName,
         roleQuery: values.primaryKeyword,
@@ -239,10 +184,10 @@ export function CampaignForm({
         location: values.location,
         days: values.days,
         remoteOnly: false,
-        resultsPerSource: values.resultsPerSource,
+        resultsPerSource: DEFAULT_RESULTS_LIMIT,
         titleFilterConfig: {
           includeTitles: selectedTitles,
-          includeKeywords,
+          includeKeywords: [],
         },
         objectiveFilterConfig: {
           objective: objectiveText,
@@ -250,11 +195,7 @@ export function CampaignForm({
           signals: objectiveSignals,
           mode: objectiveMode,
         },
-        sourceConfig: {
-          searchBoards: sourceRuntime.launchMode === "search" ? [sourceRuntime.sourceKey] : [],
-          browserBoards: sourceRuntime.launchMode === "browser" ? [sourceRuntime.sourceKey] : [],
-          atsBoards: sourceRuntime.launchMode === "ats" ? [sourceRuntime.sourceKey] : [],
-        },
+        sourceConfig,
       });
 
       const run = await triggerCampaignRun(created.id);
@@ -262,7 +203,9 @@ export function CampaignForm({
     },
     onSuccess: async ({ campaign, run }) => {
       setActiveRunId(run.id);
-      setSuccessMessage(`Created "${campaign.name}" and started run ${run.id}.`);
+      setSuccessMessage(
+        `Created "${campaign.name}" and started run ${run.id} across ${activeSourceKeys.length} source${activeSourceKeys.length === 1 ? "" : "s"}.`,
+      );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["campaigns"] }),
         queryClient.invalidateQueries({ queryKey: ["campaign-runs"] }),
@@ -274,12 +217,11 @@ export function CampaignForm({
   });
 
   const onSubmit = handleSubmit((values) => {
-    if (values.sourcePreset !== "free_zero_config" && !selectedSourceRuntime.isRunnable) {
-      return;
-    }
     setSuccessMessage("");
     createAndRunMutation.mutate(values);
   });
+
+  const sourcePreview = activeSourceKeys.slice(0, 12);
 
   return (
     <section
@@ -287,132 +229,62 @@ export function CampaignForm({
       className="scroll-mt-24 rounded-[1.9rem] border border-blue-100 bg-white p-6 shadow-[0_12px_28px_rgba(15,15,15,0.05)]"
     >
       <div className="mb-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-black">
-          Scrape
-        </p>
+        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-black">Scrape</p>
         <h2 className="mt-2 text-2xl font-semibold tracking-tight text-black">
           Launch a new sourcing run
         </h2>
         <p className="mt-2 text-sm leading-7 text-black/70">
-          This form now creates the campaign in the backend and immediately triggers a run.
+          This form creates the campaign in the backend and immediately triggers a run across all
+          currently active launchable sources. Add role titles and business signals manually so the
+          run reflects your exact use case.
         </p>
       </div>
 
-      <form className="space-y-4" onSubmit={onSubmit}>
+      <form className="space-y-5" onSubmit={onSubmit}>
         <label className="block space-y-2">
           <span className="text-sm font-medium text-black/80">Campaign Name</span>
           <input
             {...register("campaignName")}
-            list="campaign-presets"
             className="w-full rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 outline-none transition focus:border-[var(--brand-blue)] focus:bg-white"
+            placeholder="USA Finance Leadership Sweep"
           />
-          <datalist id="campaign-presets">
-            {campaignNameOptions.map((campaign) => (
-              <option key={campaign.id} value={campaign.name} />
-            ))}
-          </datalist>
           {errors.campaignName ? (
             <span className="text-sm text-black">{errors.campaignName.message}</span>
           ) : null}
         </label>
 
         <div className="grid gap-4 md:grid-cols-2">
+          <label className="block space-y-2 md:col-span-2">
+            <span className="text-sm font-medium text-black/80">Primary Keyword / Query</span>
+            <input
+              {...register("primaryKeyword")}
+              className="w-full rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 outline-none transition focus:border-[var(--brand-blue)] focus:bg-white"
+              placeholder='Chief Financial Officer OR CFO OR "VP Finance"'
+            />
+            <p className="text-xs leading-6 text-black/60">
+              This query drives the underlying search, while the manual role titles below help the
+              backend score title relevance.
+            </p>
+          </label>
+
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-black/80">Source Preset</span>
+            <span className="text-sm font-medium text-black/80">Location</span>
             <select
-              {...register("sourcePreset")}
+              {...register("location")}
               className="w-full rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 outline-none transition focus:border-[var(--brand-blue)] focus:bg-white"
             >
-              {sourcePresetOptions.map((preset) => (
-                <option key={preset.key} value={preset.key}>
-                  {preset.title}
+              {locationOptions.map((location) => (
+                <option key={location} value={location}>
+                  {location}
                 </option>
               ))}
             </select>
             <p className="text-xs leading-6 text-black/60">
-              {sourcePresetOptions.find((preset) => preset.key === selectedSourcePreset)?.description}
+              Choose `Entire world` for global coverage, or pick a specific country from the full
+              list.
             </p>
           </label>
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-black/80">Primary Keyword</span>
-            <input
-              {...register("primaryKeyword")}
-              list="keyword-presets"
-              className="w-full rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 outline-none transition focus:border-[var(--brand-blue)] focus:bg-white"
-            />
-            <datalist id="keyword-presets">
-              {primaryKeywordOptions.map((keyword) => (
-                <option key={keyword} value={keyword} />
-              ))}
-            </datalist>
-          </label>
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-black/80">Source</span>
-            <input
-              {...register("source")}
-              list="source-presets"
-              disabled={selectedSourcePreset === "free_zero_config"}
-              className="w-full rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 outline-none transition focus:border-[var(--brand-blue)] focus:bg-white"
-            />
-            <datalist id="source-presets">
-              {sourceOptions.map((source) => (
-                <option key={source} value={source} />
-              ))}
-            </datalist>
-            {selectedSourcePreset === "free_zero_config" ? (
-              <p className="text-xs leading-6 text-black/60">
-                This preset ignores the single source field and launches across all 30 free boards.
-              </p>
-            ) : null}
-          </label>
-        </div>
 
-        {selectedSourcePreset !== "free_zero_config" ? (
-          <div
-            className={[
-              "rounded-[1.25rem] border p-4 text-sm",
-              selectedSourceRuntime.isRunnable
-                ? "border-blue-100 bg-blue-50 text-black/80"
-                : "border-black bg-white text-black",
-            ].join(" ")}
-          >
-            <p className="font-semibold text-black">
-              Launch mode: {selectedSourceRuntime.launchMode}
-            </p>
-            <p className="mt-2">
-              {selectedSourceRuntime.isRunnable
-                ? selectedSourceRuntime.note ??
-                  `The backend is ready to launch ${selectedSourceRuntime.displayName}.`
-                : selectedSourceRuntime.blockingReason}
-            </p>
-            {!selectedSourceRuntime.isKnown ? (
-              <p className="mt-2 text-black/60">
-                Custom sources are allowed, but they are treated as generic search boards.
-              </p>
-            ) : null}
-            {!selectedSourceRuntime.isRunnable && suggestedSources.length ? (
-              <p className="mt-2">
-                Try one of the currently runnable sources:{" "}
-                {suggestedSources.map((source) => source.siteKey).join(", ")}.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-
-        <div className="grid gap-4 md:grid-cols-3">
-          <label className="block space-y-2 md:col-span-1">
-            <span className="text-sm font-medium text-black/80">Location</span>
-            <input
-              {...register("location")}
-              list="location-presets"
-              className="w-full rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 outline-none transition focus:border-[var(--brand-blue)] focus:bg-white"
-            />
-            <datalist id="location-presets">
-              {locationOptions.map((location) => (
-                <option key={location} value={location} />
-              ))}
-            </datalist>
-          </label>
           <label className="block space-y-2">
             <span className="text-sm font-medium text-black/80">Days</span>
             <input
@@ -422,35 +294,110 @@ export function CampaignForm({
               {...register("days", { valueAsNumber: true })}
               className="w-full rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 outline-none transition focus:border-[var(--brand-blue)] focus:bg-white"
             />
+            <div className="flex flex-wrap gap-2">
+              {[7, 14, 30, 60, 90].map((days) => (
+                <button
+                  type="button"
+                  key={days}
+                  onClick={() => setValue("days", days, { shouldValidate: true })}
+                  className="rounded-full border border-blue-100 bg-white px-3 py-1.5 text-xs font-semibold text-black/70 transition hover:border-black hover:text-black"
+                >
+                  {days} days
+                </button>
+              ))}
+            </div>
           </label>
+
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-black/80">Results / Source</span>
-            <input
-              type="number"
-              min={1}
-              max={200}
-              {...register("resultsPerSource", { valueAsNumber: true })}
+            <span className="text-sm font-medium text-black/80">Source</span>
+            <select
+              {...register("sourceSelection")}
               className="w-full rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 outline-none transition focus:border-[var(--brand-blue)] focus:bg-white"
-            />
+            >
+              {sourceOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
+
         </div>
 
-        {(errors.primaryKeyword || errors.source || errors.location || errors.days || errors.resultsPerSource) ? (
+        {(errors.primaryKeyword || errors.location || errors.days) ? (
           <div className="rounded-[1.25rem] border border-black bg-white p-4 text-sm text-black">
             {errors.primaryKeyword?.message ??
-              errors.source?.message ??
               errors.location?.message ??
-              errors.days?.message ??
-              errors.resultsPerSource?.message}
+              errors.days?.message}
           </div>
         ) : null}
 
-        <div className="rounded-[1.5rem] border border-blue-100 bg-blue-50 p-4 text-sm leading-7 text-black/80">
-          The campaign is created with the title and objective settings currently selected on this
-          page, then immediately queued for import and reporting.
-          {selectedSourcePreset === "free_zero_config"
-            ? " In free-zero-config mode, the backend launches the run across the current healthy zero-config source set for this machine."
-            : null}
+        <TagEditor
+          label="Role Titles"
+          values={selectedTitles}
+          onChange={onTitlesChange}
+          placeholder="Add a role title and press Enter"
+          helperText="Add the exact titles you want to target. Examples: `Chief Financial Officer`, `VP Finance`, `Head of Marketing`, `Chief Revenue Officer`."
+          suggestions={[
+            "Chief Financial Officer",
+            "VP Finance",
+            "Head of Finance",
+            "Director of Finance",
+            "Chief Accounting Officer",
+            "Controller",
+            "Chief Revenue Officer",
+            "VP Sales",
+            "Head of Marketing",
+          ]}
+          emptyMessage="Add the role titles you want the backend to treat as relevant matches."
+          maxVisibleSuggestions={6}
+        />
+
+        {!hasSelectedTitles ? (
+          <div className="rounded-[1.25rem] border border-black bg-white p-4 text-sm text-black">
+            Add at least one role title before launching the scrape.
+          </div>
+        ) : null}
+
+        {!hasObjectiveSignals ? (
+          <div className="rounded-[1.25rem] border border-black bg-white p-4 text-sm text-black">
+            Add at least one signal keyword so the run can score business intent correctly.
+          </div>
+        ) : null}
+
+        <div className="rounded-[1.25rem] border border-blue-100 bg-white p-4 text-sm text-black/80">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-black/60">
+            Runnable Sources
+          </p>
+          <p className="mt-2 text-sm font-medium text-black">
+            {activeSourceKeys.length} active source{activeSourceKeys.length === 1 ? "" : "s"} {activeSourceKeys.length === 1 ? "is" : "are"} ready for this scrape.
+          </p>
+          {hasRunnableSources ? (
+            <>
+              <p className="mt-2 text-sm text-black/60">
+                Search: {sourceConfig.searchBoards.length} | Browser: {sourceConfig.browserBoards.length} | ATS: {sourceConfig.atsBoards.length}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {sourcePreview.map((sourceKey) => (
+                  <span
+                    key={sourceKey}
+                    className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-semibold text-black/80"
+                  >
+                    {formatSourceLabel(sourceKey)}
+                  </span>
+                ))}
+                {activeSourceKeys.length > sourcePreview.length ? (
+                  <span className="rounded-full border border-blue-100 bg-white px-3 py-1 text-xs font-semibold text-black/60">
+                    +{activeSourceKeys.length - sourcePreview.length} more
+                  </span>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <p className="mt-3 text-sm text-black/60">
+              No runnable sources are currently available from the backend environment.
+            </p>
+          )}
         </div>
 
         {successMessage ? (
@@ -469,42 +416,30 @@ export function CampaignForm({
           </div>
         ) : null}
 
-        {runStatusQuery.data ? (
-          <div className="rounded-[1.25rem] border border-blue-100 bg-white p-4 text-sm text-black/80">
-            <p className="font-semibold text-black">Latest run status</p>
-            <p className="mt-2">
-              Status: <span className="font-medium">{runStatusQuery.data.status}</span>
-            </p>
-            <p className="mt-1">Jobs imported: {runStatusQuery.data.matchedJobCount}</p>
-            <p className="mt-1">Companies imported: {runStatusQuery.data.companyCount}</p>
-            <p className="mt-2 text-black/60">
-              {runStatusQuery.data.runNotes ?? "Run is still processing."}
-            </p>
-          </div>
-        ) : null}
-
         {createAndRunMutation.isError ? (
           <div className="rounded-[1.25rem] border border-black bg-white p-4 text-sm text-black">
-            Campaign creation failed. Check that the backend API is running and reachable.
+            {getMutationErrorMessage()}
           </div>
         ) : null}
 
-        <button
-          type="submit"
-          disabled={
-            createAndRunMutation.isPending ||
-            (selectedSourcePreset !== "free_zero_config" && !selectedSourceRuntime.isRunnable)
-          }
-          className="w-full rounded-full bg-black px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-        >
-          {createAndRunMutation.isPending
-            ? "Starting..."
-            : selectedSourcePreset === "free_zero_config"
-              ? "Launch Free 30 Preset"
-              : "Start Scrape"}
-        </button>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-black/60">
+            {runStatusQuery.data ? `Latest run status: ${runStatusQuery.data.status}` : "Ready to launch"}
+          </div>
+          <button
+            type="submit"
+            disabled={
+              createAndRunMutation.isPending ||
+              !hasRunnableSources ||
+              !hasSelectedTitles ||
+              !hasObjectiveSignals
+            }
+            className="rounded-full bg-black px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+          >
+            {createAndRunMutation.isPending ? "Launching..." : "Launch Sourcing Run"}
+          </button>
+        </div>
       </form>
     </section>
   );
 }
-

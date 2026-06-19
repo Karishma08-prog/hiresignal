@@ -76,6 +76,18 @@ def _sample_query_for_source(source: models.Source) -> dict[str, object]:
             "location": "Remote",
             "remote": True,
         },
+        "powertofly": {
+            "term": "software engineer",
+            "country": "USA",
+            "location": "Remote",
+            "remote": True,
+        },
+        "virtualvocations": {
+            "term": "customer success manager",
+            "country": "USA",
+            "location": "Remote",
+            "remote": True,
+        },
         "jobspresso": {
             "term": "software engineer",
             "country": "USA",
@@ -98,7 +110,15 @@ def _sample_query_for_source(source: models.Source) -> dict[str, object]:
     if source.site_key in board_profiles:
         return board_profiles[source.site_key]
 
-    if source.site_key == "naukri" or source.region == "india":
+    if source.site_key == "naukri":
+        return {
+            "term": "software engineer",
+            "country": "INDIA",
+            "location": "Bangalore",
+            "remote": False,
+        }
+
+    if source.region == "india":
         return {
             "term": "marketing manager",
             "country": "INDIA",

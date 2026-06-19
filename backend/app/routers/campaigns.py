@@ -4,14 +4,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.config import settings
 from app.database import get_db
-from app.services.queue import enqueue_campaign_run
+from app.routers.runs import _is_demo_fallback_run
+from app.services.queue import enqueue_campaign_run, launch_campaign_run_now
 from app.services.source_catalog import FREE_ZERO_CONFIG_BOARDS
 from app.services.source_runtime import get_preferred_live_search_boards
 from app.utils import make_id, paginate, serialize_model
 from app.routers.runs import _serialize_run
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
+
+
+def _should_launch_inline(triggered_by: str) -> bool:
+    return settings.queue_mode == "database" and triggered_by in {"frontend", "frontend_preset", "manual"}
 
 
 @router.post("", response_model=schemas.ItemResponse, status_code=201)
@@ -47,6 +53,8 @@ def launch_free_zero_config_campaign(
         limit=12,
     ) or ["linkedin"]
 
+    launch_inline = _should_launch_inline(payload.triggeredBy)
+
     campaign = models.Campaign(
         id=make_id("cmp"),
         name=payload.name,
@@ -56,7 +64,7 @@ def launch_free_zero_config_campaign(
         days=payload.days,
         remote_only=payload.remoteOnly,
         results_per_source=payload.resultsPerSource,
-        status="queued",
+        status="running" if launch_inline else "queued",
         title_filter_config=payload.titleFilterConfig,
         objective_filter_config=payload.objectiveFilterConfig,
         source_config={
@@ -71,12 +79,19 @@ def launch_free_zero_config_campaign(
     run = models.CampaignRun(
         id=make_id("run"),
         campaign_id=campaign.id,
-        status="queued",
+        status="running" if launch_inline else "queued",
         triggered_by=payload.triggeredBy,
         source_summary=[],
         run_notes=(
-            "Queued from the free zero-config preset using the currently healthiest "
-            f"{len(resolved_search_boards)} zero-config sources in this backend environment."
+            (
+                "Launching immediately from the free zero-config preset using the currently "
+                f"healthiest {len(resolved_search_boards)} zero-config sources in this backend environment."
+            )
+            if launch_inline
+            else (
+                "Queued from the free zero-config preset using the currently healthiest "
+                f"{len(resolved_search_boards)} zero-config sources in this backend environment."
+            )
         ),
     )
     campaign.last_run_id = run.id
@@ -86,7 +101,10 @@ def launch_free_zero_config_campaign(
     db.refresh(campaign)
     db.refresh(run)
 
-    enqueue_campaign_run(db, campaign.id, run.id)
+    if launch_inline:
+        launch_campaign_run_now(db, campaign.id, run.id)
+    else:
+        enqueue_campaign_run(db, campaign.id, run.id)
     return {
         "item": {
             "campaign": serialize_model(schemas.CampaignRead.model_validate(campaign)),
@@ -99,9 +117,20 @@ def launch_free_zero_config_campaign(
 def list_campaigns(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, alias="pageSize", ge=1, le=100),
+    include_demo: bool = Query(default=False, alias="includeDemo"),
     db: Session = Depends(get_db),
 ):
     campaigns = db.query(models.Campaign).order_by(models.Campaign.created_at.desc()).all()
+    if not include_demo:
+        visible_campaigns: list[models.Campaign] = []
+        for campaign in campaigns:
+            if not campaign.last_run_id:
+                visible_campaigns.append(campaign)
+                continue
+            last_run = db.get(models.CampaignRun, campaign.last_run_id)
+            if last_run is None or not _is_demo_fallback_run(db, last_run):
+                visible_campaigns.append(campaign)
+        campaigns = visible_campaigns
     items = [serialize_model(schemas.CampaignRead.model_validate(campaign)) for campaign in campaigns]
     return paginate(items, page, page_size)
 
@@ -146,18 +175,24 @@ def trigger_campaign_run(
     if campaign is None:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
+    launch_inline = _should_launch_inline(payload.triggeredBy)
+
     run = models.CampaignRun(
         id=make_id("run"),
         campaign_id=campaign.id,
-        status="queued",
+        status="running" if launch_inline else "queued",
         triggered_by=payload.triggeredBy,
         source_summary=[],
+        run_notes="Launching immediately from the frontend." if launch_inline else None,
     )
-    campaign.status = "queued"
+    campaign.status = "running" if launch_inline else "queued"
     campaign.last_run_id = run.id
     db.add(run)
     db.commit()
     db.refresh(run)
 
-    enqueue_campaign_run(db, campaign.id, run.id)
+    if launch_inline:
+        launch_campaign_run_now(db, campaign.id, run.id)
+    else:
+        enqueue_campaign_run(db, campaign.id, run.id)
     return {"item": _serialize_run(db, run)}

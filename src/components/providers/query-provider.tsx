@@ -13,13 +13,13 @@ export function QueryProvider({
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 30_000,
+            staleTime: 120_000,
             gcTime: 1_800_000,
             placeholderData: (previousData: unknown) => previousData,
             retry: 1,
-            refetchOnWindowFocus: true,
+            refetchOnWindowFocus: false,
             refetchOnReconnect: true,
-            refetchOnMount: true,
+            refetchOnMount: false,
           },
         },
       }),

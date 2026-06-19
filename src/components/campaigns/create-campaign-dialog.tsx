@@ -1,23 +1,21 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
+import axios from "axios";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CirclePlus, X } from "lucide-react";
-import { createCampaign, getCampaigns, triggerCampaignRun } from "@/lib/api/campaigns";
+import { createCampaign, triggerCampaignRun } from "@/lib/api/campaigns";
 import { getSourceOverview } from "@/lib/api/sources";
 import {
-  getSuggestedRunnableSources,
-  inferCountry,
-  isLaunchableSource,
-  resolveSourceRuntime,
-} from "@/lib/source-launch";
-import {
-  defaultIncludeKeywords,
   defaultObjectiveModes,
-  defaultObjectiveSignals,
   defaultTitleGroups,
 } from "@/lib/scraper-defaults";
+import {
+  formatSourceLabel,
+  getAllRunnableSourceConfig,
+  inferCountry,
+} from "@/lib/source-launch";
 
 export function CreateCampaignDialog() {
   const queryClient = useQueryClient();
@@ -25,67 +23,35 @@ export function CreateCampaignDialog() {
   const [form, setForm] = useState({
     name: "",
     roleQuery: "",
-    source: "linkedin",
-    location: "India",
+    location: "Entire world",
     days: 30,
-    resultsPerSource: 25,
+    resultsPerSource: 100,
   });
   const [successMessage, setSuccessMessage] = useState("");
   const [latestRunId, setLatestRunId] = useState<string | null>(null);
 
-  const campaignsQuery = useQuery({
-    queryKey: ["campaigns"],
-    queryFn: () => getCampaigns(),
-  });
   const sourcesQuery = useQuery({
     queryKey: ["source-overview"],
     queryFn: getSourceOverview,
   });
 
-  const sourceMap = useMemo(() => {
-    return new Map((sourcesQuery.data ?? []).map((source) => [source.siteKey, source] as const));
-  }, [sourcesQuery.data]);
-  const sourceOptions = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...(sourcesQuery.data ?? [])
-            .filter(
-              (source) =>
-                isLaunchableSource(source) &&
-                resolveSourceRuntime(
-                  source.siteKey,
-                  new Map([[source.siteKey, source]]),
-                ).isRunnable,
-            )
-            .map((source) => source.siteKey),
-          ...(campaignsQuery.data ?? []).flatMap((campaign) => [
-            ...(campaign.sourceConfig.searchBoards ?? []),
-            ...(campaign.sourceConfig.browserBoards ?? []),
-            ...(campaign.sourceConfig.atsBoards ?? []),
-          ]),
-        ]),
-      )
-        .filter((source) => {
-          const known = sourceMap.get(source);
-          return !known || resolveSourceRuntime(source, sourceMap).isRunnable;
-        })
-        .sort((left, right) => left.localeCompare(right)),
-    [campaignsQuery.data, sourceMap, sourcesQuery.data],
-  );
-  const selectedSourceRuntime = useMemo(
-    () => resolveSourceRuntime(form.source, sourceMap),
-    [form.source, sourceMap],
-  );
-  const suggestedSources = useMemo(
-    () => getSuggestedRunnableSources(sourcesQuery.data ?? [], 4),
+  const sourceConfig = useMemo(
+    () => getAllRunnableSourceConfig(sourcesQuery.data ?? []),
     [sourcesQuery.data],
   );
+  const allRunnableSources = useMemo(
+    () =>
+      [
+        ...sourceConfig.searchBoards,
+        ...sourceConfig.browserBoards,
+        ...sourceConfig.atsBoards,
+      ].sort((left, right) => left.localeCompare(right)),
+    [sourceConfig],
+  );
+  const sourcePreview = allRunnableSources.slice(0, 10);
 
   const createAndRunMutation = useMutation({
     mutationFn: async () => {
-      const sourceRuntime = resolveSourceRuntime(form.source, sourceMap);
-
       const created = await createCampaign({
         name: form.name.trim(),
         roleQuery: form.roleQuery.trim(),
@@ -96,19 +62,15 @@ export function CreateCampaignDialog() {
         resultsPerSource: form.resultsPerSource,
         titleFilterConfig: {
           includeTitles: defaultTitleGroups,
-          includeKeywords: defaultIncludeKeywords,
+          includeKeywords: [],
         },
         objectiveFilterConfig: {
           objective: "Find companies with strong market-expansion hiring signals.",
-          targetMarket: "US",
-          signals: defaultObjectiveSignals,
+          targetMarket: "Entire world",
+          signals: defaultObjectiveModes[0]?.defaultSignals ?? [],
           mode: defaultObjectiveModes[0]?.key ?? "expansion_hiring",
         },
-        sourceConfig: {
-          searchBoards: sourceRuntime.launchMode === "search" ? [sourceRuntime.sourceKey] : [],
-          browserBoards: sourceRuntime.launchMode === "browser" ? [sourceRuntime.sourceKey] : [],
-          atsBoards: sourceRuntime.launchMode === "ats" ? [sourceRuntime.sourceKey] : [],
-        },
+        sourceConfig,
       });
 
       const run = await triggerCampaignRun(created.id);
@@ -116,7 +78,9 @@ export function CreateCampaignDialog() {
     },
     onSuccess: async ({ campaign, run }) => {
       setLatestRunId(run.id);
-      setSuccessMessage(`Created "${campaign.name}" and started run ${run.id}.`);
+      setSuccessMessage(
+        `Created "${campaign.name}" and started run ${run.id} across ${allRunnableSources.length} active sources.`,
+      );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["campaigns"] }),
         queryClient.invalidateQueries({ queryKey: ["campaign-runs"] }),
@@ -130,9 +94,32 @@ export function CreateCampaignDialog() {
   const isFormValid =
     form.name.trim().length >= 2 &&
     form.roleQuery.trim().length >= 2 &&
-    form.source.trim().length >= 2 &&
     form.location.trim().length >= 2;
-  const canLaunch = isFormValid && selectedSourceRuntime.isRunnable;
+  const canLaunch = isFormValid && allRunnableSources.length > 0;
+
+  function getMutationErrorMessage() {
+    if (!createAndRunMutation.error) {
+      return "";
+    }
+
+    if (axios.isAxiosError(createAndRunMutation.error)) {
+      const detail = createAndRunMutation.error.response?.data?.detail;
+      if (typeof detail === "string" && detail.trim()) {
+        return detail;
+      }
+      if (Array.isArray(detail) && detail.length > 0) {
+        return detail
+          .map((item) => item?.msg)
+          .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+          .join(" ");
+      }
+      if (createAndRunMutation.error.message) {
+        return createAndRunMutation.error.message;
+      }
+    }
+
+    return "Campaign launch failed. Please try again.";
+  }
 
   return (
     <>
@@ -161,7 +148,8 @@ export function CreateCampaignDialog() {
                   Create and start a campaign
                 </h2>
                 <p className="mt-2 text-sm leading-7 text-black/70">
-                  This creates the campaign in the backend and immediately starts the run.
+                  This creates the campaign in the backend and immediately starts the run across
+                  all active launchable sources.
                 </p>
               </div>
               <button
@@ -180,7 +168,7 @@ export function CreateCampaignDialog() {
                   value={form.name}
                   onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                   className="w-full rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 outline-none transition focus:border-[var(--brand-blue)] focus:bg-white"
-                  placeholder="RevEngineer US Expansion"
+                  placeholder="RevEngineer Global Expansion"
                 />
               </label>
 
@@ -195,51 +183,6 @@ export function CreateCampaignDialog() {
                   placeholder="Head of Marketing OR VP Marketing"
                 />
               </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-black/80">Source</span>
-                <input
-                  value={form.source}
-                  onChange={(event) => setForm((current) => ({ ...current, source: event.target.value }))}
-                  list="dashboard-source-options"
-                  className="w-full rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 outline-none transition focus:border-[var(--brand-blue)] focus:bg-white"
-                />
-                <datalist id="dashboard-source-options">
-                  {sourceOptions.map((source) => (
-                    <option key={source} value={source} />
-                  ))}
-                </datalist>
-              </label>
-
-              <div
-                className={[
-                  "rounded-[1.25rem] border p-4 text-sm md:col-span-2",
-                  selectedSourceRuntime.isRunnable
-                    ? "border-blue-100 bg-blue-50 text-black/80"
-                    : "border-black bg-white text-black",
-                ].join(" ")}
-              >
-                <p className="font-semibold text-black">
-                  Launch mode: {selectedSourceRuntime.launchMode}
-                </p>
-                <p className="mt-2">
-                  {selectedSourceRuntime.isRunnable
-                    ? selectedSourceRuntime.note ??
-                      `The backend is ready to launch ${selectedSourceRuntime.displayName}.`
-                    : selectedSourceRuntime.blockingReason}
-                </p>
-                {!selectedSourceRuntime.isKnown ? (
-                  <p className="mt-2 text-black/60">
-                    Custom sources are allowed, but they are treated as generic search boards.
-                  </p>
-                ) : null}
-                {!selectedSourceRuntime.isRunnable && suggestedSources.length ? (
-                  <p className="mt-2">
-                    Try one of the currently runnable sources:{" "}
-                    {suggestedSources.map((source) => source.siteKey).join(", ")}.
-                  </p>
-                ) : null}
-              </div>
 
               <label className="block space-y-2">
                 <span className="text-sm font-medium text-black/80">Location</span>
@@ -287,6 +230,38 @@ export function CreateCampaignDialog() {
               </label>
             </div>
 
+            <div className="mt-5 rounded-[1.25rem] border border-blue-100 bg-blue-50 p-4 text-sm text-black/80">
+              <p className="font-semibold text-black">
+                Source readiness: {allRunnableSources.length} active sources
+              </p>
+              {allRunnableSources.length ? (
+                <>
+                  <p className="mt-2">
+                    Search: {sourceConfig.searchBoards.length} | Browser: {sourceConfig.browserBoards.length} | ATS: {sourceConfig.atsBoards.length}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {sourcePreview.map((source) => (
+                      <span
+                        key={source}
+                        className="rounded-full border border-blue-100 bg-white px-3 py-1 text-xs font-semibold text-black/80"
+                      >
+                        {formatSourceLabel(source)}
+                      </span>
+                    ))}
+                    {allRunnableSources.length > sourcePreview.length ? (
+                      <span className="rounded-full border border-blue-100 bg-white px-3 py-1 text-xs font-semibold text-black/60">
+                        +{allRunnableSources.length - sourcePreview.length} more
+                      </span>
+                    ) : null}
+                  </div>
+                </>
+              ) : (
+                <p className="mt-2">
+                  No active launchable sources are available from the backend right now.
+                </p>
+              )}
+            </div>
+
             {successMessage ? (
               <div className="mt-4 rounded-[1.25rem] border border-blue-200 bg-blue-50 p-4 text-sm text-[var(--brand-blue)]">
                 <p>{successMessage}</p>
@@ -305,19 +280,13 @@ export function CreateCampaignDialog() {
 
             {createAndRunMutation.isError ? (
               <div className="mt-4 rounded-[1.25rem] border border-black bg-white p-4 text-sm text-black">
-                Campaign creation failed. Check that the backend API is running.
+                {getMutationErrorMessage()}
               </div>
             ) : null}
 
             {!isFormValid ? (
               <div className="mt-4 rounded-[1.25rem] border border-blue-200 bg-blue-50 p-4 text-sm text-[var(--brand-blue)]">
-                Fill campaign name, keyword, source, and location to create the campaign.
-              </div>
-            ) : null}
-
-            {isFormValid && !selectedSourceRuntime.isRunnable ? (
-              <div className="mt-4 rounded-[1.25rem] border border-black bg-white p-4 text-sm text-black">
-                {selectedSourceRuntime.blockingReason}
+                Fill campaign name, keyword, and location to create the campaign.
               </div>
             ) : null}
 
@@ -344,4 +313,3 @@ export function CreateCampaignDialog() {
     </>
   );
 }
-
