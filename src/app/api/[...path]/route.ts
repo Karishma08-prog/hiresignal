@@ -4,9 +4,9 @@ import { buildApiUrl, SESSION_COOKIE } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const HOP_BY_HOP_HEADERS = new Set([
+const REQUEST_DROP_HEADERS = new Set([
+  "accept-encoding",
   "connection",
-  "content-length",
   "expect",
   "host",
   "keep-alive",
@@ -18,11 +18,24 @@ const HOP_BY_HOP_HEADERS = new Set([
   "upgrade",
 ]);
 
-function cloneHeaders(request: NextRequest) {
+const RESPONSE_DROP_HEADERS = new Set([
+  "connection",
+  "content-encoding",
+  "content-length",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+]);
+
+function cloneRequestHeaders(request: NextRequest) {
   const headers = new Headers();
 
   request.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
+    if (!REQUEST_DROP_HEADERS.has(key.toLowerCase())) {
       headers.set(key, value);
     }
   });
@@ -47,7 +60,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
 
   const init: RequestInit = {
     method: request.method,
-    headers: cloneHeaders(request),
+    headers: cloneRequestHeaders(request),
     redirect: "manual",
     cache: "no-store",
   };
@@ -59,12 +72,16 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const upstream = await fetch(url, init);
   const responseHeaders = new Headers();
   upstream.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
+    if (!RESPONSE_DROP_HEADERS.has(key.toLowerCase())) {
       responseHeaders.set(key, value);
     }
   });
 
-  return new NextResponse(upstream.body, {
+  const body = upstream.status === 204 || upstream.status === 304
+    ? null
+    : await upstream.arrayBuffer();
+
+  return new NextResponse(body, {
     status: upstream.status,
     statusText: upstream.statusText,
     headers: responseHeaders,
